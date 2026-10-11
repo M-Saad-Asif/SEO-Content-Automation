@@ -1,0 +1,7 @@
+name: site_profile
+kind: script
+description: The client site's essence and writing voice, measured from its homepage, about page and up to three articles. Cached per domain for 30 days.
+needs: [foundation]
+modes: [deep, quick]
+budget_s: 10
+outputs: [research/site_profile.json]

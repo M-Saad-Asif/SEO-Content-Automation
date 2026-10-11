@@ -1,0 +1,6 @@
+httpx>=0.27
+PyYAML>=6.0
+spacy>=3.7,<4
+# then: python -m spacy download en_core_web_sm
+pycountry>=24
+pypdf>=4

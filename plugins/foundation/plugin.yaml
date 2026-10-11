@@ -1,0 +1,7 @@
+name: foundation
+kind: script
+description: Client site data and official facts. Live page (H1, title), sitemap and link map, Shopify products with specs, official-source facts verified against their text, vertical checks (e.g. luggage_fit).
+needs: []
+modes: [deep, quick]
+budget_s: 15
+outputs: [fact_sheet.json, link_map.json]

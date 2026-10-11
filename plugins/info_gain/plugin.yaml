@@ -1,0 +1,7 @@
+name: info_gain
+kind: script
+description: Information gain beyond the top 10. Searches forums, review sites and independent blogs for the keyword (Serper), reads what it can, and keeps excerpts with their source so the writer can add attributed real-world experience and opinion. Deep mode only.
+needs: [serp_intel, reddit_voice]
+modes: [deep]
+budget_s: 10
+outputs: [research/info_gain.json]

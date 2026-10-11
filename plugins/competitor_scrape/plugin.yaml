@@ -1,0 +1,7 @@
+name: competitor_scrape
+kind: script
+description: Fetches the top-ranking pages (10 in deep mode, 5 in quick) in parallel and extracts each one's outline, main-content blocks, word count and tables. Pages that block scripts are recorded and skipped, never worked around.
+needs: [serp_intel]
+modes: [deep, quick]
+budget_s: 15
+outputs: [research/competitor_scrape.json]

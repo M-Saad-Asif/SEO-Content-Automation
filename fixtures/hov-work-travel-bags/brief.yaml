@@ -1,0 +1,100 @@
+slug: hov-work-travel-bags
+# Fixture 1 — House of Velorien "work and travel bags" guide.
+client: House of Velorien
+client_aliases: [Velorien]
+domain: houseofvelorien.com
+locale: en-GB
+page_url: https://houseofvelorien.com/blogs/guides/work-travel-bags
+page_type: guide
+target_query: best bags for work and travel uk
+search_intent: commercial-investigation
+word_range: [900, 1400]
+ymyl: false
+platform: shopify
+product_sources:
+  collection: bags          # handles are resolved from the store's JSON at run time
+hardcode_prices: false
+mode: auto
+
+official_sources:
+  - url: https://www.easyjet.com/en/help/baggage/cabin-bag-and-hold-luggage
+    label: easyJet cabin bags
+    facts:
+      - id: easyjet.under_seat
+        claim: easyJet free small under-seat cabin bag, maximum size
+        value: 45 x 36 x 20 cm
+        condition: including handles and wheels
+        kind: bag_limit
+        carrier: easyJet
+        allowance: free under-seat bag
+  - url: https://www.britishairways.com/content/information/baggage-essentials
+    label: British Airways baggage essentials
+    facts:
+      - id: ba.cabin
+        claim: British Airways cabin bag, maximum size
+        value: 56 x 45 x 25cm
+        also: ["including wheels and handles"]
+        condition: including wheels and handles
+        kind: bag_limit
+        carrier: British Airways
+        allowance: cabin bag
+      - id: ba.personal
+        claim: British Airways handbag or backpack (personal item), maximum size
+        value: 40 x 30 x 15cm
+        also: ["Must easily fit under the seat in front of you"]
+        kind: bag_limit
+        carrier: British Airways
+        allowance: handbag or backpack
+  - url: https://help.ryanair.com/hc/en-gb/articles/12888036565521-Ryanair-s-Bag-Policy
+    label: Ryanair bag policy
+    facts:
+      - id: ryanair.small
+        claim: Ryanair free small personal bag, maximum size
+        value: 40 x 30 x 20 cm
+        also: ["must fit under the seat in front of you"]
+        kind: bag_limit
+        carrier: Ryanair
+        allowance: free small personal bag
+      - id: ryanair.priority
+        claim: Ryanair Priority & 2 Cabin Bags, 10kg overhead-locker bag, maximum size
+        value: 55x40x20cm
+        also: ["Priority & 2 Cabin Bags", "10kg bag"]
+        kind: bag_limit
+        carrier: Ryanair
+        allowance: Priority 10kg cabin bag
+  - url: https://www.wizzair.com/en-gb/help-centre/booking-information-and-services/baggage/baggage-allowance/cabin-baggage
+    label: Wizz Air cabin baggage
+    facts:
+      - id: wizz.free
+        claim: Wizz Air free carry-on bag, maximum size
+        value: 40 x 30 x 20 cm
+        also: ["Size allowance does not include bag handles"]
+        condition: not counting handles and wheels
+        kind: bag_limit
+        carrier: Wizz Air
+        allowance: free under-seat bag
+      - id: wizz.priority
+        claim: Wizz Air WIZZ Priority trolley bag, maximum size
+        value: 55 x 40 x 23 cm
+        also: ["exclusively available as part of WIZZ Priority"]
+        condition: not counting handles and wheels
+        kind: bag_limit
+        carrier: Wizz Air
+        allowance: WIZZ Priority trolley bag
+
+required_facts: [easyjet.under_seat, ba.cabin, ba.personal, ryanair.small, ryanair.priority, wizz.free]
+vertical_checks: [luggage_fit]
+
+client_facts:
+  - "House of Velorien is a retailer that sells bags from the brands Eagle, Fantana and Peter James. It is not the designer or manufacturer."
+approved_claims:
+  - "Ships across the UK"
+banned_claims:
+  - guarantee
+banned_phrases:      # page-specific must-nots (on top of scripts/lexicon.yaml)
+  - CAA
+  - Civil Aviation Authority
+  - beeswax
+  - regional train
+  - fits all airlines
+proper_nouns: [Eagle, Fantana, Peter James, Canary, Shoreditch, Marloes, Ennismore, Ryanair, Wizz, Air, British, Airways, easyJet, Priority]

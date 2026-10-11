@@ -1,0 +1,349 @@
+# Phrase lists used by `seo.py lint`. Editing aids, not an AI detector.
+# Sources: the old style-policy.json (1.4.5) and Wikipedia "Signs of AI writing". General writing
+# rules only: a client's own banned phrases and failure patterns live in clients/<client>.yaml.
+# Matching is case-insensitive on word boundaries. Exact names and direct
+# quotations from a source are allowed when quoted ("...").
+
+# Zero uses allowed in narration.
+banned:
+  # AI-tell vocabulary
+  - streamline
+  - streamlines
+  - streamlined
+  - simple yet powerful
+  - powerful yet simple
+  - empower
+  - empowers
+  - delve
+  - delves
+  - delving
+  - tapestry
+  - testament
+  - pivotal
+  - realm
+  - bustling
+  - vibrant
+  - nestled
+  - ever-evolving
+  - game-changer
+  - game changer
+  - revolutionary
+  - cutting-edge
+  - unparalleled
+  - unmatched
+  - unforgettable
+  - transcendent
+  - meticulous
+  - meticulously
+  - commendable
+  - leverage
+  - leveraging
+  - foster
+  - fostering
+  - embark
+  - elevate
+  - elevates
+  - elevating
+  - unlock
+  - unlocks
+  - unlocking
+  - seamless
+  - seamlessly
+  - effortless
+  - effortlessly
+  - robust
+  - navigating
+  - navigate the
+  - holistic approach
+  - deep dive
+  - dive deep
+  - journey
+  - definitive guide
+  - ultimate guide
+  - world-class
+  - renowned
+  - esteemed
+  - premier
+  - tailored to
+  - cater to
+  - caters to
+  - excels at
+  - engineered to
+  - designed for those who
+  - in today's fast-paced world
+  - in the world of
+  - in conclusion
+  - in summary
+  - it's worth noting
+  - it is worth noting
+  - it's important to note
+  - it is important to note
+  - plays a vital role
+  - plays a crucial role
+  - plays a pivotal role
+  - stands as a
+  - additionally
+  - moreover
+  - furthermore
+  - not only
+  - not just
+  # Koray: contextless words and rhetorical openers (v1.0 rules 1.13, 6.2, 6.7)
+  - harness
+  - myriad
+  - plethora
+  - resonate
+  - resonates
+  - revolutionize
+  - revolutionise
+  - basically
+  - actually
+  - essentially
+  - in order to
+  - as a matter of fact
+  - needless to say
+  - as we all know
+  - when it comes to
+  - at the end of the day
+  - without further ado
+  - for all intents and purposes
+  - have you ever wondered
+  - picture this
+  - let's dive in
+  - in this article
+  - we will explore
+  # Vague corporate filler seen across clients
+  - hinges on
+  - addresses these
+  - ensures compliance
+  # Pseudo-legal register (allowed only inside a direct quote of an official term)
+  - sovereign
+  - statutory
+  - adjudication
+  - adjudications
+  - adjudicating
+  - substantive
+  - dossier
+  # Framework / signpost leftovers
+  - reversal condition
+  - one trade-off to consider
+  - take note of an essential
+  - a key limitation
+  - key takeaway
+  - key takeaways
+
+# Regex patterns for style failures seen in earlier runs (blocking).
+known_failures:
+  - '^(crafted|made|built|constructed|finished|cut) (from|in|with) [^,]+, (this|it|the)\b'
+  # stand-alone disclaimer boilerplate (RULES 8b: warnings go in the section, in concrete terms)
+  - '\b(the )?information (here|on this page|in this (guide|article))( is| above is)? (general|for general information)'
+  - '\bthis (guide|article|page) (is|does) not (constitute )?(personal|financial|legal|medical) advice\b'
+  - '^(the )?figures (here|on this page|in this guide) are (correct )?as (of|at)\b'
+
+# Allowed up to N times per article.
+limited:
+  dedicated: 1
+  structured: 2
+  compact: 3
+  crucial: 0
+  essential: 2
+  comprehensive: 0
+  key: 2
+  ensure: 1
+  ensures: 1
+  addresses: 0
+  address: 1
+  rapid: 0
+  enhance: 0
+  enhances: 0
+  showcase: 0
+  showcasing: 0
+  highlight: 1
+  highlights: 1
+  underscore: 0
+  underscores: 0
+  boasts: 0
+  landscape: 0
+  valuable: 1
+  intricate: 0
+  innovative: 0
+  curated: 0
+  bespoke: 0
+  versatile: 1
+  sleek: 1
+  ideal: 1
+  perfect: 0
+  premium: 1
+  serves as: 1
+  whether you: 1
+  petition: 1
+  demand: 1
+  demands: 0
+  alert: 0
+  alerts: 0
+  precise: 1
+  verified: 2
+  official: 6
+  worth: 1
+  "that's the": 1
+
+# Lines or bullets that start with one of these are visible framework labels.
+framework_labels:
+  - pass
+  - fail
+  - result
+  - outcome
+  - reversal condition
+  - trade-off
+  - tradeoff
+  - key takeaway
+  - takeaway
+  - bottom line
+  - verdict
+  - pro tip
+  - tip
+  - note
+  - important
+  - why it matters
+  - the catch
+  - in short
+  - tl;dr
+  - summary
+  - caveat
+  - limitation
+  - drawback
+  - who it's for
+  - who it is for
+  - best for
+  - quick answer
+  - short answer
+  - answer
+
+# Words that mark "the reader" drifting away from "you".
+person_drift:
+  block: [user, users]
+  warn: [passenger, passengers, customer, customers, shopper, shoppers, buyer, buyers, professionals]
+
+# Absolute or guarantee language. Allowed only when a usable fact's value or claim contains the same phrase.
+absolutes:
+  block: ['guarantee', 'guarantees', 'guaranteed', 'always', '100%', 'worldwide', 'instant', 'instantly', 'never fails', 'risk-free', 'certainly', 'without fail']
+  warn: ['never', 'every', 'all', 'fully', 'completely', 'entirely']
+
+# Placeholder text that must never sit in a table cell or bullet.
+placeholders:
+  - 'standard [a-z ]*(window|timeline|queue|period|benchmark|time|timeframe)'
+  - '\btbd\b'
+  - '\btbc\b'
+  - '\bn/?a\b'
+  - '^\s*-+\s*$'
+  - '^\s*varies\s*$'
+  - 'check (the )?(official )?portal'
+  - 'contact (the |your )?[a-z]+ for (more |further )?details'
+  - 'processing window'
+  - 'turnaround benchmark'
+  - 'lorem ipsum'
+
+# Internal codes that must never reach copy.
+internal_codes:
+  - '\bmodel\s+\d{3,}'
+  - '\bsku\b'
+  - 'inventory_'
+  - 'source reference'
+  - 'source-ref'
+  - 'import:'
+
+# Nominalisation patterns: a weak verb wrapped round a noun ending -tion/-ment/-ance/-ence/-age.
+nominalisations:
+  - '\b(apply|applies|provide|provides|offer|offers|give|gives|make|makes|perform|performs|carry out|carries out|conduct|conducts|ensure|ensures|deliver|delivers)\s+(?:\w+\s+){0,2}\w+(?:tion|ment|ance|ence|age)\b'
+
+# Common verbs that break a noun-stack run (heuristic noun-stack detector).
+stack_breakers: [choose, use, pack, carry, check, fit, fits, keep, add, book, buy, bring, take, need, needs, want, wants, has, have, is, are, was, were, be, can, will, may, must, should, do, does, get, gets, make, makes, holds, hold, sits, sit, measures, weighs, costs, cost, shows, show, means, lets, let, goes, go, give, gives, put, open, opens, close, closes, stays, stay, comes, come, works, work, apply, applies, pay, pays, send, sends, call, calls, track, tracks, see, find, read, link, enter, select, sign, create]
+
+# US -> UK spellings (en-GB). Reversed automatically for en-US.
+us_to_uk:
+  color: colour
+  colors: colours
+  colored: coloured
+  favorite: favourite
+  favorites: favourites
+  center: centre
+  centers: centres
+  centered: centred
+  traveler: traveller
+  travelers: travellers
+  traveling: travelling
+  traveled: travelled
+  canceled: cancelled
+  canceling: cancelling
+  gray: grey
+  jewelry: jewellery
+  aluminum: aluminium
+  catalog: catalogue
+  mold: mould
+  tire: tyre
+  tires: tyres
+  fulfill: fulfil
+  fulfillment: fulfilment
+  enrollment: enrolment
+  enroll: enrol
+  labeled: labelled
+  labeling: labelling
+  modeling: modelling
+  defense: defence
+  offense: offence
+  program: programme
+  programs: programmes
+  analyze: analyse
+  analyzed: analysed
+  analyzing: analysing
+  discoloration: discolouration
+  behavior: behaviour
+  behaviors: behaviours
+  neighbor: neighbour
+  harbor: harbour
+  honor: honour
+  humor: humour
+  labor: labour
+  odor: odour
+  vapor: vapour
+  rumor: rumour
+  savior: saviour
+  flavor: flavour
+  pajamas: pyjamas
+  plow: plough
+  skeptical: sceptical
+  check-in counter: check-in desk
+  carry-on luggage: hand luggage
+  family doctor: GP
+  emergency room: A&E
+  pediatrician: paediatrician
+  anemia: anaemia
+  fiber: fibre
+  liter: litre
+  liters: litres
+  aging: ageing
+  math: maths
+  apartment: flat
+  zip code: postcode
+  cell phone: mobile phone
+  gasoline: petrol
+  gas station: petrol station
+  parking lot: car park
+  sidewalk: pavement
+  faucet: tap
+  diaper: nappy
+  diapers: nappies
+  freeway: motorway
+  stove top: hob
+  drop cloth: dust sheet
+  drop cloths: dust sheets
+  zip code: postcode
+  cell phone: mobile phone
+  fall season: autumn
+  vacation: holiday
+  vacations: holidays
+  sneakers: trainers
+  pants: trousers
+  checkbook: chequebook
+
+# -ize words that keep the z in UK English (do not flag).
+ize_exceptions: [size, sizes, sized, sizing, oversize, oversized, downsize, prize, prizes, seize, seized, capsize, citizen, citizens, citizenship, maize, baize, bronze, assize, outsize, resize, resized, upsized, wizard]

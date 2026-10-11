@@ -1,0 +1,24 @@
+# Regression expectations for Fixture 2. Run: python scripts/seo.py test mfv-visa-status-check
+brief: fixtures/mfv-visa-status-check/brief.yaml
+
+must_block_phrases:
+  - Standard overseas service window
+  - Standard Schengen review window
+  - Japan MOFA Visa Console
+  - National Immigration Administration
+  - once per business day
+  - priority expedition
+  - sovereign
+  - statutory
+  - adjudication
+  - guarantees expert administrative facilitation
+  - diplomatic channels
+  - expedited processing network
+  - permanent case number
+  - liaise directly
+  - authoritative
+  - categorize
+  - Global Visa Status Check & Application Tracker
+
+# Rules that must fire at least once on every bad_v*.md.
+must_rules: [R02-hub-rebuilds-children, U08-link-context, T01-placeholder, H02-h1, C01-banned-claim]

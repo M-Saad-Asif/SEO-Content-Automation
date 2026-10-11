@@ -1,0 +1,8 @@
+name: current_page
+kind: script
+description: Rewrite mode. Reads the page being rewritten (outline, main content, word count, title, meta description) so later stages know what already exists and what already ranks.
+needs: [foundation]
+modes: [deep, quick]
+when: {task: rewrite}
+budget_s: 5
+outputs: [research/current_page.json]

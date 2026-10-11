@@ -1,0 +1,7 @@
+name: research_plan
+kind: script
+description: Turns everything the script stages found into a research plan for the deep_research agent stage. Lists the questions the page must answer (main query, People Also Ask, decisions), the topics most ranking pages share, the figures several pages state (to trace to their origin), the facts already gathered whose scope must be checked, known conflicts, the client's own pages to read, and the source map for this locale. Writes research_plan.md.
+needs: [foundation, serp_intel, competitor_scrape, official_facts, query_map, semantic_graph]
+modes: [deep, quick]
+budget_s: 3
+outputs: [research_plan.md, research/research_plan.json]

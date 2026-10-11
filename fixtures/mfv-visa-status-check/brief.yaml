@@ -1,0 +1,122 @@
+slug: mfv-visa-status-check
+# Fixture 2 — Master Fast Visas /visa-status-check hub (YMYL).
+client: Master Fast Visas
+client_aliases: [MasterFastVisas, MFV]
+domain: masterfastvisas.com
+locale: en-GB
+page_url: https://masterfastvisas.com/visa-status-check
+page_type: hub
+target_query: visa status check
+search_intent: informational
+word_range: [600, 900]
+ymyl: true
+platform: other
+child_pages: auto          # discovered from the live selector + the visa-status-check sitemap
+mode: auto
+# H1 is taken from the live page ("Where Is My Visa Application?"); set h1: to override.
+
+official_sources:
+  - url: https://www.gov.uk/contact-ukvi-inside-outside-uk/y/outside-the-uk/checking-when-you-will-get-your-visa-decision
+    label: GOV.UK, contact UKVI about your visa decision (outside the UK)
+    facts:
+      - id: ukvi.update_rule
+        claim: UKVI contact centre staff only give a status update when both conditions apply
+        value: can only give you an update on the status of your visa application if both of the following apply
+        also: ["it has taken UKVI longer than usual to process your visa application", "UKVI has not already contacted you about your application"]
+      - id: ukvi.no_date
+        claim: Contact centre staff cannot say when the decision will arrive
+        value: UKVI contact centre staff cannot tell you when you will get your visa decision
+      - id: ukvi.notifies
+        claim: UKVI emails or writes when it has decided, or when the application will take longer than usual
+        value: UKVI will send you an email or letter
+        also: ["when UKVI has made a decision on your application", "if your application will take longer than usual to process"]
+      - id: ukvi.email_fee
+        claim: Cost of an email query to UKVI from outside the UK
+        value: Queries cost £2.74
+        also: ["You will not be charged for any follow-up emails about the same query"]
+      - id: ukvi.email_reply
+        claim: UKVI replies to email queries within 5 days (not counting Fridays, weekends and UK public holidays)
+        value: You will get a reply to your query within 5 days
+      - id: ukvi.call_fee
+        claim: Cost of calling the UKVI contact centre from outside the UK
+        value: Calls cost 69 pence per minute on top of your standard network charges
+      - id: ukvi.priority
+        claim: UKVI publishes separate processing times for the priority and super priority services
+        value: priority or super priority service
+      - id: ukvi.no_tracker
+        claim: UKVI has no public online tracker for visa applications; it contacts you by email or letter
+        value: UKVI has no public online application tracker
+        also: ["UKVI will send you an email or letter"]
+        absence_of: ["track your application", "track your visa application", "check your application status online", "application tracker", "status tracker"]
+      - id: ukvi.processing_times
+        claim: Processing time depends on visa type; GOV.UK lists current times
+        value: Find the current processing time for your type of visa
+  - url: https://www.gov.uk/evisa/set-up-ukvi-account
+    label: GOV.UK, set up a UKVI account to access your eVisa
+    facts:
+      - id: evisa.account
+        claim: A UKVI account is needed to access an eVisa (a granted status, not a tracker)
+        value: You need a UK Visas and Immigration ( UKVI ) account to access your eVisa
+      - id: evisa.gwf_uan
+        claim: GWF or UAN number plus passport can be used to create the UKVI account
+        value: a valid passport and your visa application number - this is a global web form ( GWF ) number or unique application number ( UAN )
+      - id: evisa.link
+        claim: The eVisa cannot be viewed until it is linked to the UKVI account
+        value: You cannot access your eVisa until you’ve linked it to your UKVI account
+  - url: https://fi.usembassy.gov/check-the-status-of-a-pending-case/
+    label: U.S. Embassy Finland, check the status of a pending case
+    facts:
+      - id: us.ceac
+        claim: U.S. visa status is checked on the State Department's CEAC website with the DS-160 barcode (application ID)
+        value: Consular Electronic Application Center (CEAC) website at https://ceac.state.gov/CEACStatTracker/Status.aspx to check the status of your visa application
+        also: ["barcode number (application ID) from your DS-160 application"]
+      - id: us.after_info
+        claim: After sending requested information, check CEAC no sooner than three business days later
+        value: check the status of your case no sooner than three business days after submitting the requested information
+  - url: https://om.usembassy.gov/administrative-processing-nonimmigrant-visas/
+    label: U.S. Embassy Oman, administrative processing
+    facts:
+      - id: us.221g
+        claim: A case in administrative processing is a visa denial under Section 221(g); CEAC shows REFUSED until the visa is printed
+        value: visa application denial under Section 221(g)
+        also: ["Your website status will change from “REFUSED” to “ISSUED” only after we receive your passport and your visa is printed"]
+      - id: us.ap_told
+        claim: The consular officer tells you at the end of the interview if administrative processing is needed
+        value: When administrative processing is required, the consular officer will inform the applicant at the end of the interview
+  - url: https://in.usembassy.gov/check-your-case-status/
+    label: U.S. Embassy India, check your case status
+    facts:
+      - id: us.ceac_inputs
+        claim: CEAC needs your barcode or case number and the interview location
+        value: Use your CEAC barcode or case number and the location where your interview occurred to check the status of your case
+
+client_facts: []
+approved_claims:
+  - "MasterFastVisas can process a new priority e-visa in under 48 hours"
+banned_claims:
+  - guarantee
+  - guarantees expedited appointment scheduling
+  - diplomatic channels
+  - global expedited processing network
+  - escalate
+  - escalation
+  - audit
+  - liaise
+banned_phrases:
+  - National Immigration Administration
+  - NIA
+  - reference number format
+  - Schengen reference
+  - update once per
+  - permanent case number
+  - UKVI tracker
+  - track your UK visa online
+secondary_queries: [check visa application status, uk visa application status, us visa status check, 221g refused, ukvi account evisa]
+proper_nouns: [DS-160, ISSUED, REFUSED, UKVI, GOV.UK, CEAC, Visas, Immigration, United, Kingdom, States, Master, Fast, MasterFastVisas, State, Department, Visa, Status, Check]
+
+
+link_context_bans:
+  - url: gov.uk/evisa
+    words: [track, tracker, tracking, application status, status check, check your status, check the status, progress]
+    reason: the UKVI account gives access to a granted eVisa; it is not an application tracker
+    fix: describe it as where you view an eVisa after a grant

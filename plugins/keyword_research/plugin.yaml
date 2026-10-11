@@ -1,0 +1,8 @@
+name: keyword_research
+kind: script
+description: DataForSEO keyword intelligence. Search volume and intent for the target query, its related keywords and the page's top GSC queries, plus People Also Ask expanded by click depth (deeper than Serper). Script route with DATAFORSEO_USERNAME/PASSWORD; MCP route through the official DataForSEO MCP server and `seo.py ingest`.
+needs: [serp_intel, gsc_insights]
+modes: [deep, quick]
+connector: dataforseo
+budget_s: 20
+outputs: [research/keyword_research.json]

@@ -1,0 +1,7 @@
+name: semantic_graph
+kind: script
+description: The knowledge graph of the topic in this market (seolib.graph, plain rules; spaCy only sharpens types). Typed entities with aliases, definitions and how many ranking pages and searches use them; entity attribute values with the sites that state each value and a qualifier (max, min, range, typical); subject-predicate-object relationships with the sentence that states them. Pages written for another market are left out. Also the figures most top pages agree on, the heading topics Google expects, and PAA questions no top page answers. Rendered for the writer as knowledge_graph.md.
+needs: [competitor_scrape, query_map]
+modes: [deep, quick]
+budget_s: 40
+outputs: [research/semantic_graph.json]

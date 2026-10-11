@@ -1,0 +1,7 @@
+name: topic_outline
+kind: script
+description: The full question and topic map the writer builds the outline from. Every People Also Ask question (this market's and borrowed), related search, Search Console query, and every question the ranking pages ask in their headings and FAQ blocks, grouped into the sections the ranking pages share and ordered macro to micro the way they order them. Each section carries its questions (with the query map's decision), the sub-topics competitors cover under it, and the knowledge-graph entities, attribute values and relationships that belong to it. Questions for another page, another market or off topic are listed with the reason.
+needs: [serp_intel, query_map, competitor_scrape, semantic_graph]
+modes: [deep, quick]
+budget_s: 20
+outputs: [research/topic_outline.json]

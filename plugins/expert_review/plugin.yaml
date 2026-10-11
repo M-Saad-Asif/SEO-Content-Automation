@@ -1,0 +1,7 @@
+name: expert_review
+kind: agent
+description: E-E-A-T stage, run as its own agent after deep_research. A senior practitioner in the page's field reads the business context and the dossier and gives an independent professional view - the recommendation for each decision, the mistakes people make, what a professional would warn about, what the research missed - grounded in the dossier's evidence. Adds expertise and judgement; never invents first-hand experience. Writes expert_notes.md.
+needs: [deep_research]
+modes: [deep]
+budget_s: 300
+outputs: [expert_notes.md]

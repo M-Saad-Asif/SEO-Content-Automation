@@ -1,0 +1,7 @@
+name: internal_links
+kind: agent
+description: The last writing stage, after the fact-check. Scripts rank the client's pages against each paragraph of the finished draft (internal_links_plan.md); the agent places 3-6 contextual main-content links whose anchor is the target page's main term, following Koray Tuğberk Gübür's interlinking rules, and logs every decision in internal_links.md.
+needs: [fact_check]
+modes: [deep, quick]
+budget_s: 300
+outputs: [internal_links.md, draft.md links]

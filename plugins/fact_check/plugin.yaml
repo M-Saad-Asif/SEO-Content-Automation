@@ -1,0 +1,7 @@
+name: fact_check
+kind: agent
+description: The last stage before DONE, run as its own agent (a subagent where the host supports one, otherwise a fresh pass that has not seen the research). An independent fact-checker checks every sentence of final.md that may state a fact against the page it credits (verify_sheet.md lists them with their links and closest verified fact), rewrites or cuts what the source does not say, and records a verdict per sentence in verify.md.
+needs: [deep_research]
+modes: [deep, quick]
+budget_s: 600
+outputs: [verify.md, draft.md fixed in place]

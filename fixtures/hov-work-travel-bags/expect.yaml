@@ -1,0 +1,50 @@
+# Regression expectations for Fixture 1. Run: python scripts/seo.py test hov-work-travel-bags
+brief: fixtures/hov-work-travel-bags/brief.yaml
+
+# In every bad_v*.md that contains one of these phrases, lint must raise a BLOCK finding on it.
+must_block_phrases:
+  - products/office-laptop-bag
+  - products/peter-james-holdall)
+  - fantana-voyager-shoulder-bag
+  - compress
+  - soft-press
+  - all European airlines
+  - Civil Aviation Authority
+  - CAA
+  - House of Velorien designs
+  - Model 9010
+  - Model 2505
+  - Reversal Condition
+  - older regional train
+  - distributes weight more evenly
+  - metal teeth
+  - When loaded with
+  - the total load
+  - Suspending
+  - board-level
+  - maintains its form
+  - maximizes
+  - sanitizer
+  - discoloration
+  - localized
+  - beeswax
+  - hinges on
+  - One trade-off to consider
+  - A key limitation
+
+# Product links must come from the store. These old handles must 301 to a product in the link map,
+# and these guessed handles must never be in the link map.
+redirecting_handles: [eagle-office-laptop-bag-black, eagle-office-laptop-bag-coffee-brown, eagle-bc-5002-office-laptop-bag,
+                      peter-james-holdall-bag, fantana-voyager-holdall, fantana-voyager-shoulderbag, peter-james-messenger-bag]
+dead_handles: [office-laptop-bag, peter-james-holdall, fantana-voyager-shoulder-bag]
+
+# luggage_fit must compute these (product name substring, limit fact id).
+luggage_fit:
+  - {product: Shoreditch Holdall, limit: ryanair.priority, verdict: too_big}
+  - {product: Shoreditch Holdall, limit: ba.cabin, verdict: fits}
+  - {product: Marloes Holdall, limit: easyjet.under_seat, verdict: fits, zero_margin: true}
+  - {product: Marloes Holdall, limit: ryanair.small, verdict: too_big}
+  - {product: Canary Laptop Bag, limit: ba.personal, verdict: too_big}
+  - {product: Shoreditch Shoulder Bag, limit: ryanair.small, verdict: too_big}
+  - {product: Shoreditch Shoulder Bag, limit: easyjet.under_seat, verdict: too_big}
+  - {product: Ennismore Messenger, limit: ryanair.small, verdict: dims_doubtful}

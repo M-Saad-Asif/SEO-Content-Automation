@@ -1,0 +1,61 @@
+# Copy to briefs/<page-slug>.yaml. The file name becomes the run slug.
+# Required: client, domain, locale, page_url, page_type, target_query, search_intent, word_range, mode.
+
+client: House of Velorien
+client_aliases: [Velorien]          # other names the copy might use for the client (client-claim lint)
+domain: houseofvelorien.com
+locale: en-GB                       # drives the spelling lint (en-GB or en-US)
+page_url: https://houseofvelorien.com/blogs/guides/work-travel-bags   # live page: its H1/title are fetched; 404 = new page
+page_type: guide                    # guide | hub | spoke | product-guide | service
+target_query: best bags for work and travel uk
+search_intent: commercial-investigation
+word_range: [900, 1400]
+ymyl: false                         # true -> every factual claim must map to a fact; explain costs/conditions of advice
+task: new                           # new | rewrite (rewrite adds current_page, Search Console and Clarity)
+connectors: auto                    # auto = use any configured connector, or list: [gsc, dataforseo, clarity, reddit]
+# gsc_property: sc-domain:example.com   # default sc-domain:<domain>
+# clarity_token_env: CLARITY_API_TOKEN  # one token per Clarity project
+# dataforseo_location: United Kingdom   # default from locale
+mode: auto                          # always auto: the run never pauses or asks; decisions are logged in report.md
+secondary_queries: [best laptop bag for work uk, cabin bag sizes uk airlines]   # also answered on the page (lint K02)
+# h1: "Exact H1"                    # optional override; otherwise the live H1 must be kept
+# single_brand: false               # true -> "best" in the title is blocked
+# hardcode_prices: false            # true only if the page is regenerated when prices change
+# notes: "Anything the writer should know (tone, audience)."
+
+platform: shopify                   # shopify -> products resolved from /products.json; anything else -> no product fetch
+product_sources:                    # handles OR collection(s); real URLs come from the store, never from this file
+  collection: bags
+  # handles: [eagle-canary-laptop-bag]
+  # include: [holdall, laptop]      # optional substring filters on handle/title
+  # exclude: [gift-card]
+
+# sitemaps: [https://example.com/page-sitemap.xml]   # optional: override automatic child-sitemap selection
+child_pages: auto                   # hub only: auto = discover by path prefix from the live page + sitemap, or list URLs
+
+official_sources:                   # third-party facts, fetched and verified on every run (cache 7 days)
+  - url: https://www.easyjet.com/en/help/baggage/cabin-bag-and-hold-luggage
+    label: easyJet cabin bags
+    facts:
+      - id: easyjet.under_seat      # stable id; lint traces numbers to facts like this
+        claim: easyJet free small under-seat cabin bag, maximum size
+        value: 45 x 36 x 20 cm      # exact text as written on the source; verified = found in its text
+        also: []                    # extra strings that must also appear (conditions, qualifiers)
+        condition: including handles and wheels
+        kind: bag_limit             # used by checks/luggage_fit.py
+        carrier: easyJet
+        allowance: free under-seat bag
+        # absence_of: ["track your application"]   # for "X has no Y" facts: verified when the page has none of these
+
+required_facts: [easyjet.under_seat]   # pending facts are verified in step 2 (agent browser or another official source) or written around
+vertical_checks: [luggage_fit]          # modules in checks/
+
+client_facts:                       # operator-supplied facts not on the site (positioning, history, brands)
+  - "House of Velorien is a retailer that sells Eagle, Fantana and Peter James bags; it is not the designer."
+approved_claims:                    # the ONLY things the copy may say about the client's services; used only if found on the client's site
+  - "Ships across the UK"
+banned_claims:                      # never said, even if true elsewhere
+  - guarantee
+banned_phrases: []                  # page-specific phrases to block on top of scripts/lexicon.yaml
+proper_nouns: []                    # extra capitalised names so the Title Case lint ignores them
+link_context_bans: []               # [{url: gov.uk/evisa, words: [track, tracker], reason: "..."}]

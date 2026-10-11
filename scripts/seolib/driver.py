@@ -1,0 +1,725 @@
+"""`seo.py next <brief>`: the pipeline as a state machine.
+
+The coding agent (Claude Code, Codex, Cursor, Antigravity, any other) does not decide what to do. It runs
+`python scripts/seo.py next <brief>`, does exactly the one task printed, and runs `next` again, until it prints
+DONE. Every deterministic step (research, outline check, lint, editor's review sheet, validate, eval) is run here,
+by code; the agent only researches, judges and writes when the printed task says so.
+
+Agent-side tasks are confirmed with `python scripts/seo.py done <brief> <step>` where the task says so, so the
+driver never has to guess whether a judgement task was finished.
+"""
+from __future__ import annotations
+
+import contextlib
+import io
+from collections import Counter
+from pathlib import Path
+
+from . import common as C
+
+SEP = "-" * 72
+
+
+def _in_repo() -> bool:
+    return Path.cwd().resolve() == C.ROOT.resolve()
+
+
+def PY() -> str:
+    """The interpreter running this, in the shortest form that reaches the same one: "python3" on macOS, "python"
+    on Windows, the full path when a bare name would find another Python (an inactive virtual environment)."""
+    import os
+    import shutil
+    import sys
+    exe = Path(sys.executable)
+    name = exe.stem if exe.suffix.lower() == ".exe" else exe.name
+    found = shutil.which(name)
+    try:
+        if found and os.path.samefile(found, exe):
+            return name
+    except OSError:
+        pass
+    return f'"{exe.as_posix()}"'
+
+
+def CMD() -> str:
+    """How to call the CLI from the folder the agent is in."""
+    return f"{PY()} scripts/seo.py" if _in_repo() else f'{PY()} "{(C.ROOT / "scripts" / "seo.py").as_posix()}"'
+
+
+def _state(rd: Path) -> dict:
+    return C.load_json(rd / "state.json") or {"done": {}}
+
+
+def _save_state(rd: Path, st: dict) -> None:
+    C.save_json(rd / "state.json", st)
+
+
+def mark_done(brief_path: str, step: str) -> None:
+    from .prep import load_brief
+    rd = _current_run(load_brief(brief_path))
+    if rd is None:
+        raise SystemExit(f"No run yet. Run: {CMD()} next {brief_path}")
+    st = _state(rd)
+    if step == "retry":
+        st["rounds"], st["round_sig"] = {}, {}
+        _save_state(rd, st)
+        print(f"OK: fix-round counters reset for {rd.name}. Now run: {CMD()} next {brief_path}")
+        return
+    need = {"research": rd / "research" / "dossier.md", "expert": rd / "expert_notes.md",
+            "review": rd / "review.md", "expert_read": rd / "expert_read.md", "editor": rd / "editor.md",
+            "verify": rd / "verify.md", "internal_links": rd / "internal_links.md"}
+    if step not in need:
+        raise SystemExit(f"Unknown step '{step}'. Steps you confirm: {', '.join(need)}")
+    if not need[step].exists():
+        raise SystemExit(f"NOT DONE: {need[step].as_posix()} does not exist yet. Finish the task first.")
+    text = need[step].read_text(encoding="utf-8")
+    if step == "verify":
+        from .verify import check
+        problems = check(rd, text)
+    elif step == "internal_links":
+        from .links import check as link_check
+        problems = link_check(rd, text)
+    else:
+        problems = _gate(step, rd, text)
+    if problems:
+        print(f"NOT DONE: {need[step].name} is incomplete. Fix these, then run `done` again:")
+        for p in problems:
+            print(f"- {p}")
+        raise SystemExit(1)
+    st["done"][step] = C.now_iso()
+    _save_state(rd, st)
+    print(f"OK: '{step}' recorded for {rd.name}. Now run: {CMD()} next {brief_path}")
+
+
+GATES = {  # headings each agent output must have (the formats in the skills); matched case-insensitively
+    "research": ["main answer", "answers by question", "do not say", "gaps"],
+    "expert": ["answer a professional would give", "decisions the reader faces", "mistakes people make",
+               "what a professional would warn about", "experience the client can genuinely claim"],
+    "expert_read": ["verdict", "what i would change", "current news", "business fit", "risk"],
+    "editor": ["claim ledger", "expert read"],
+}
+
+
+def _gate(step: str, rd: Path, text: str) -> list[str]:
+    """Structural checks on an agent's output, so `done` cannot confirm an empty or invented file."""
+    import re
+    heads = [h.strip().lower() for h in re.findall(r"^#{1,4}\s+(.+)$", text, re.M)]
+    need = [g for g in GATES.get(step, []) if not (g == "expert read" and not (rd / "expert_read.md").exists())]
+    out = [f"missing section \"{g}\" (see the skill's format)" for g in need if not any(g in h for h in heads)]
+    if step == "research":
+        if not re.search(r"^###\s+\S", text, re.M):
+            out.append("\"Answers by question\" has no ### question entries")
+        ids = {f.get("id") for f in (C.load_json(rd / "fact_sheet.json") or {}).get("facts", [])}
+        cited = set(re.findall(r"`([a-z0-9]+(?:[-:_.][a-z0-9]+)+)`", text, re.I))
+        unknown = sorted(c for c in cited if c not in ids)
+        if unknown:
+            out.append("cites fact ids that are not in the fact sheet (add them with --add-fact or correct the id): "
+                       + ", ".join(unknown[:15]))
+        plan = (rd / "research_plan.md").read_text(encoding="utf-8") if (rd / "research_plan.md").exists() else ""
+        need_t = re.findall(r"^- (T\d+): (.+?) \(", plan, re.M)
+        sec = re.search(r"^##\s+topics[^\n]*$(.*?)(?=^##\s|\Z)", text, re.M | re.I | re.S)
+        have = set(re.findall(r"\b(T\d+)\b", sec.group(1))) if sec else set()
+        missing = [f"{t} ({name})" for t, name in need_t if t not in have]
+        if missing:
+            out.append("the topics section has no line for: " + "; ".join(missing[:12])
+                       + " (cover each with fact ids, or say why it is left out)")
+        main = re.search(r"^##\s+main answer\s*$(.*?)(?=^##\s)", text, re.M | re.I | re.S)
+        if main and not re.search(r"`[^`]+`", main.group(1)):
+            out.append("the main answer cites no fact id")
+    if step == "editor":
+        ledger = re.search(r"^#{1,4}[^\n]*claim ledger[^\n]*$(.*?)(?=^#{1,4}\s|\Z)", text, re.M | re.I | re.S)
+        if ledger and len([l for l in ledger.group(1).splitlines() if l.strip()]) < 3:
+            out.append("the claim ledger lists fewer than three factual sentences")
+    return out
+
+
+def _length_line(rd: Path) -> str:
+    b = (C.load_json(rd / "fact_sheet.json") or {}).get("brief", {})
+    eff, raw = b.get("word_range_effective"), b.get("word_range")
+    if eff:
+        return (f"Length: aim for {eff[0]}–{eff[1]} words. This range (set from the ranking pages) replaces the brief's "
+                f"{raw[0]}–{raw[1]}. Reach it with verified material only: a shorter page beats an invented sentence.")
+    if raw:
+        return f"Length: aim for {raw[0]}–{raw[1]} words, with verified material only."
+    return "Length: as long as the verified material needs, no padding."
+
+
+def _quiet(fn, *a, **k):
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        res = fn(*a, **k)
+    return res, buf.getvalue()
+
+
+LINT_ROUNDS = 5       # fix rounds before the run stops instead of looping (WORKFLOW: stop after three validate rounds)
+VALIDATE_ROUNDS = 3
+
+
+def _finding_lines(fs: list[dict], limit: int = 40) -> list[str]:
+    out = []
+    for f in fs[:limit]:
+        out.append(f"- [{f['rule']}] line {f.get('line')}: \"{(f.get('text') or '')[:160]}\"")
+        out.append(f"    why: {f.get('reason')}" + (f"  fix: {f['fix']}" if f.get("fix") else ""))
+    if len(fs) > limit:
+        out.append(f"- …and {len(fs) - limit} more; run `next` again after these to see them.")
+    return out
+
+
+def _rounds(rd: Path, st: dict, key: str, cap: int, R: str, brief_path: str, left) -> bool:
+    """Count fix rounds; after `cap` rounds stop the run with a clear verdict instead of looping."""
+    import hashlib
+    sig = hashlib.sha1((rd / "draft.md").read_bytes()).hexdigest()
+    st.setdefault("rounds", {})
+    seen = st.setdefault("round_sig", {})
+    if seen.get(key) != sig:  # a round is one edited draft that still fails, not one call of `next`
+        st["rounds"][key] = st["rounds"].get(key, 0) + 1
+        seen[key] = sig
+        _save_state(rd, st)
+    if st["rounds"][key] <= cap:
+        return False
+    print(SEP)
+    print(f"STOPPED: {key} still fails after {cap} fix rounds")
+    print(SEP)
+    print(f"Draft:  {R}/draft.md")
+    print(f"Report: {R}/report.md")
+    print("Still blocking:")
+    print("\n".join(_finding_lines(left)) if isinstance(left, list) else left)
+    print("\nStop here. Reply with STOPPED, the two paths and the blocking lines above, and nothing else.")
+    print(f"(An operator can reset the counter with: {CMD()} done {brief_path} retry)")
+    return True
+
+
+def _task(title: str, lines: list[str], brief_path: str, confirm: str | None = None) -> None:
+    print(SEP)
+    print(f"NEXT TASK: {title}")
+    print(SEP)
+    if not _in_repo():
+        print(f"Repository: {C.ROOT.as_posix()} (every relative path below is inside it)")
+    if "role: writer" in title or "role: hostile senior editor" in title:
+        print("Claude Code: give this task to the `seo-writer` agent (it runs on Sonnet). Other tools: do it yourself.")
+    for ln in lines:
+        print(ln)
+    print()
+    print(f"Checks (outline check, lint, review sheet, validate, eval) are run by `next`; do not run them yourself, even")
+    print(f"where a WORKFLOW.md section mentions them. At any step you may record a verified fact with:")
+    print(f"  {CMD()} prep {brief_path} --add-fact <id> \"<claim>\" \"<exact words>\" <url> --scope \"<who/when>\"")
+    if confirm:
+        print(f"When the task is complete, run: {CMD()} done {brief_path} {confirm}")
+    print(f"Then run: {CMD()} next {brief_path}")
+    print("Do only this task. Do not start the next one until `next` prints it.")
+
+
+def next_step(brief_path: str, mode: str | None = None) -> None:
+    from .prep import load_brief
+    brief = load_brief(brief_path)  # exits with BRIEF NOT FOUND / BRIEF INVALID
+    rel = lambda p: Path(p).resolve().relative_to(C.ROOT.resolve()).as_posix()
+
+    # 1. research (scripts) -------------------------------------------------------------------------------------
+    rd = _current_run(brief)
+    if rd is None or not (rd / "research_plan.md").exists() or not (rd / "writer_pack.md").exists():
+        print(f"RUNNING: research for \"{brief['target_query']}\" (scripts, 1–3 minutes)…")
+        from .harness import run_research
+        # the scripts' own console notes ("next: write outline.md…") are for manual runs; here `next` decides
+        rd, log = _quiet(run_research, brief_path, mode)
+        (rd / "research_log.txt").write_text(log, encoding="utf-8")
+        print(f"Research scripts finished (log: {rel(rd)}/research_log.txt).")
+        st = _state(rd)
+        st["mode"] = mode or brief.get("research_mode") or "deep"
+        _save_state(rd, st)
+    st = _state(rd)
+    deep = st.get("mode", "deep") == "deep"
+    R = rel(rd)
+
+    # 2. research (agent) ----------------------------------------------------------------------------------------
+    if "research" not in st["done"]:
+        _task("RESEARCH (role: researcher)", [
+            f"Run folder: {R}",
+            "If your tool can start a separate agent, give this task to one (Claude Code: the `seo-researcher` agent).",
+            "Otherwise do it yourself as a separate pass, before you think about the article.",
+            "",
+            "1. Read plugins/deep_research/SKILL.md fully. It is your complete instruction for this task.",
+            f"2. Work {R}/research_plan.md as the skill says, using your own web search and fetch tools. If you have",
+            f"   no tool that opens a URL, read pages with: {CMD()} read <url>",
+            f"3. Record each finding with: {CMD()} prep {brief_path} --add-fact <id> \"<claim>\" \"<exact words>\" <url> --scope \"<who/when>\"",
+            "   (one call at a time; wait for each to finish).",
+            f"4. Write {R}/research/dossier.md in the format the skill gives.",
+            "Do not write the article.",
+        ], brief_path, confirm="research")
+        return
+
+    # 3. expert review (agent, deep) ------------------------------------------------------------------------------
+    if deep and "expert" not in st["done"]:
+        _task("EXPERT REVIEW (role: expert reviewer)", [
+            f"Run folder: {R}",
+            "If your tool can start a separate agent, give this task to one (Claude Code: the `seo-expert` agent).",
+            "",
+            "1. Read plugins/expert_review/SKILL.md, pass 1 (everything above \"Pass 2\"). It is your complete instruction.",
+            f"2. Read the brief ({brief_path}), the client profile in clients/, {R}/research/dossier.md and {R}/writer_pack.md"
+            " (its decisions section first).",
+            f"3. Write {R}/expert_notes.md in the format the skill gives. Never invent experience, statistics or credentials.",
+        ], brief_path, confirm="expert")
+        return
+
+    # 4. outline (agent writes, script checks; deep) --------------------------------------------------------------
+    outline = rd / "outline.md"
+    draft = rd / "draft.md"
+    if not draft.exists():  # the facts the researcher verified since the scripts ran belong in both documents
+        from .kgdoc import write_docs
+        write_docs(rd)
+    docs = [f"{R}/{n}" for n in ("topic_outline.md", "knowledge_graph.md") if (rd / n).exists()]
+    if deep and not st["done"].get("outline"):
+        if not outline.exists():
+            _task("OUTLINE (role: writer)", [
+                f"Run folder: {R}",
+                "1. Read RULES.md and WORKFLOW.md section 3 (Outline).",
+                f"2. Read {R}/writer_pack.md, " + (", ".join(docs) + ", " if docs else "")
+                + f"{R}/research/dossier.md and {R}/expert_notes.md.",
+                f"3. Write {R}/outline.md exactly as WORKFLOW.md section 3 describes (H1, H2/H3s, Skip:/Linked: lines,",
+                "   one line under each heading naming the facts it uses)"
+                + (", built from topic_outline.md's sections and their questions." if docs else "."),
+            ], brief_path)
+            return
+        from .outline import check_outline
+        ok, out = _quiet(check_outline, rd)
+        if not ok:
+            _task("FIX THE OUTLINE (role: writer)", [
+                f"The outline check failed. Edit {R}/outline.md so that every line starting with B below is resolved:",
+                "", out.strip()[-3000:], "",
+                "Change only what these lines ask for.",
+            ], brief_path)
+            return
+        st["done"]["outline"] = C.now_iso()
+        _save_state(rd, st)
+
+    # 5. draft (agent) ---------------------------------------------------------------------------------------------
+    if not draft.exists():
+        _task("DRAFT (role: writer)", [
+            f"Run folder: {R}",
+            "1. Read RULES.md fully and WORKFLOW.md section 4 (Draft).",
+            f"2. Read {R}/writer_pack.md, " + (", ".join(docs) + ", " if docs else "") + f"{R}/research/dossier.md"
+            + (f", {R}/expert_notes.md and {R}/outline.md." if deep else "."),
+            f"3. Write {R}/draft.md in one pass, as WORKFLOW.md section 4 describes (front matter, one H1, Markdown only).",
+            "4. Reread it once as the reader (contradictions, repeated numbers or rules, sentences that only announce",
+            "   the next one) and fix those in the same pass.",
+            "",
+            _length_line(rd),
+        ], brief_path)
+        return
+
+    # 6. lint (script) ------------------------------------------------------------------------------------------------
+    from .lint import lint_text, load_research
+    sheet = C.load_json(rd / "fact_sheet.json")
+    lm = C.load_json(rd / "link_map.json") or {}
+    res = lint_text(draft.read_text(encoding="utf-8"), sheet, lm, load_research(rd))
+    C.save_json(rd / "lint.json", res)
+    blocks = [f for f in res["findings"] if f["severity"] == "block"]
+    if blocks:
+        if _rounds(rd, st, "lint", LINT_ROUNDS, R, brief_path, blocks):
+            return
+        lines = [f"Lint found {len(blocks)} blocking problem(s) in {R}/draft.md. Fix each one in place, one edit per",
+                 "item, and change nothing else (WORKFLOW.md section 6):", ""]
+        lines += _finding_lines(blocks)
+        _task("FIX LINT BLOCKS (role: writer)", lines, brief_path)
+        return
+    st.setdefault("rounds", {})["lint"] = 0
+    _save_state(rd, st)
+
+    # 7. editor's review sheet (script builds it, agent resolves it) --------------------------------------------------
+    if "review" not in st["done"]:
+        from .review import review
+        _quiet(review, rd)
+        warns = [f for f in res["findings"] if f["severity"] == "warn"]
+        lines = [
+            f"The review sheet is {R}/review.md (claims beside their facts, client lines, section shapes, gaps).",
+            "Follow WORKFLOW.md section 6b: for every CHECK line make the sentence say what its fact says, add the",
+            f"fact with --add-fact, or cut the claim; fix repeated section shapes; edit {R}/draft.md in place.",
+        ]
+        if warns:
+            lines += ["", f"Also judge these {len(warns)} lint warning(s) (WORKFLOW.md section 5): fix a sentence when the rule",
+                      "really applies to it; leave it when the sentence is already clear.", ""]
+            lines += _finding_lines(warns)
+        _task("RESOLVE THE REVIEW SHEET (role: writer)", lines, brief_path, confirm="review")
+        return
+
+    # 8. validate (script) ---------------------------------------------------------------------------------------------
+    final = rd / "final.md"
+    if not final.exists() or final.stat().st_mtime < draft.stat().st_mtime:
+        from .validate import validate
+        ok, out = _quiet(validate, str(rd))
+        if not ok:
+            if _rounds(rd, st, "validate", VALIDATE_ROUNDS, R, brief_path, out.strip()[-3500:]):
+                return
+            _task("FIX VALIDATION (role: writer)", [
+                f"Validation failed. Fix each blocking line below in {R}/draft.md and change nothing else:", "",
+                out.strip()[-3500:],
+            ], brief_path)
+            return
+        st.setdefault("rounds", {})["validate"] = 0
+        _save_state(rd, st)
+
+    # 8b. the expert read: an independent practitioner's opinion on the finished page, with today's news (deep) -----------
+    if deep and "expert_read" not in st["done"]:
+        _task("EXPERT READ OF THE FINISHED PAGE (role: independent senior practitioner)", [
+            "Give this to a fresh agent that has not drafted the page (Claude Code: the `seo-expert` agent).",
+            "",
+            "1. Read plugins/expert_review/SKILL.md, section \"Pass 2: the expert read of the finished article\". It is",
+            "   your complete instruction for this task.",
+            f"2. Read {R}/final.md, the brief ({brief_path}) and the client profile in clients/. Search today's news on",
+            "   the topic (last 18 months) with your own search tools; record any fact the page needs with --add-fact.",
+            f"3. Write {R}/expert_read.md in the format the skill gives. Do not edit the draft: the editor applies it next.",
+        ], brief_path, confirm="expert_read")
+        return
+
+    # 9. editor's pass (agent) -------------------------------------------------------------------------------------------
+    if "editor" not in st["done"]:
+        from .review import review
+        _quiet(review, rd)  # the sheet beside the editor must describe the page as it is now, not an earlier draft
+        _task("EDITOR'S PASS (role: hostile senior editor)", [
+            f"`next` has just validated the draft: {R}/final.md is current. Follow WORKFLOW.md section 7b exactly:",
+            f"1. Read docs/EVAL_RUBRIC.md and {R}/final.md, with {R}/review.md beside it"
+            + (f", and the expert's opinion in {R}/expert_read.md." if (rd / "expert_read.md").exists() else "."),
+            f"2. Write {R}/editor.md: deductions per rubric criterion with quoted lines; generic, link-only and",
+            "   announcing sentences; repeated section endings; the claim ledger (every factual sentence → fact id →",
+            "   same case yes/no); limits written with or less/or more checked against their facts; missing shared topics."
+            + ("" if not (rd / "expert_read.md").exists() else
+               "\n   Add a section \"## Expert read\": every item of expert_read.md with what you changed, or why not."),
+            f"3. Fix {R}/draft.md in place for each item (cut, rewrite, or add a verified fact)"
+            + (", including every expert-read change you accept and every current-news change." if (rd / "expert_read.md").exists() else "."),
+        ], brief_path, confirm="editor")
+        return
+
+    # 9b. independent fact-check (agent) ----------------------------------------------------------------------------
+    if "verify" not in st["done"]:
+        if not (rd / "verify_claims.json").exists():  # built once, from the validated page, so C-numbers stay stable
+            from .verify import build
+            build(rd)
+        _task("FACT-CHECK (role: independent fact-checker)", [
+            "Give this task to a fresh agent that has not written or researched the page (Claude Code: the",
+            "`seo-fact-checker` agent; Cursor/Codex/Antigravity: a new chat with this task, or if you cannot, do it",
+            "yourself without opening the dossier, writer pack or outline).",
+            "",
+            "1. Read plugins/fact_check/SKILL.md fully. It is your complete instruction for this task.",
+            f"2. Check every sentence in {R}/verify_sheet.md against the page it credits; open pages with your own",
+            f"   fetch tool or: {CMD()} read <url>",
+            f"3. Fix or cut unsupported sentences in {R}/draft.md, and write {R}/verify.md (one line per C-number).",
+        ], brief_path, confirm="verify")
+        return
+
+    # 9c. internal links: the last writing stage, on the finished and fact-checked page -----------------------------
+    if "internal_links" not in st["done"]:
+        from .links import build
+        cands = build(rd)
+        _task("INTERNAL LINKS (role: internal linker)", [
+            "Claude Code: give this to the `seo-writer` agent. Other tools: do it yourself.",
+            "",
+            "1. Read plugins/internal_links/SKILL.md fully (Koray Tuğberk Gübür's interlinking rules). It is your complete",
+            "   instruction for this task.",
+            f"2. Read {R}/internal_links_plan.md: {len(cands)} client pages ranked against the paragraphs they fit.",
+            f"3. Add 3 to 6 contextual links in {R}/draft.md (each target's main term as the anchor, in a sentence about it,",
+            "   never in the first sentence under a heading), and change nothing else.",
+            f"4. Write {R}/internal_links.md: Links added, Not linked, Anchors waiting.",
+        ], brief_path, confirm="internal_links")
+        return
+
+    # the page says when it was last checked (a trust signal for readers and raters, and for answer engines)
+    ft = final.read_text(encoding="utf-8")
+    if ft.startswith("---\n") and "\nupdated:" not in ft.split("\n---", 1)[0]:
+        from datetime import date
+        final.write_text(ft.replace("---\n", f"---\nupdated: {date.today().isoformat()}\n", 1), encoding="utf-8")
+
+    # 10. eval (final.md is current: step 8 re-validates after every edit, the editor's included) ---------------------
+    if not (rd / "eval.md").exists() or (rd / "eval.md").stat().st_mtime < final.stat().st_mtime:
+        from .evaluate import evaluate
+        _quiet(evaluate, rd)
+    st["done"]["complete"] = C.now_iso()
+    _save_state(rd, st)
+    print(SEP)
+    print("DONE")
+    print(SEP)
+    print(f"Page:   {R}/final.md")
+    print(f"Report: {R}/report.md")
+    print(f"Scores sheet (for a reviewer): {R}/eval.md")
+    print("Stop here. Reply with these three paths and nothing else.")
+
+
+def parse_request(text: str) -> dict:
+    """What the user typed after /page-seo, in their own words: a client, a keyword and, optionally, instructions.
+
+    "nutmeg: what is a lifetime isa | first-time buyers, plain English"
+    "what is a lifetime isa for nutmeg -- keep it short"
+    "\"how to paint a fence\" ronseal, aimed at beginners"
+    "best running shoes for example.com"      (a domain with no profile yet is onboarded)
+    The client is found by its profile slug, name or domain; the keyword is a quoted phrase if there is one, else
+    the text before "|", " -- " or a new line (or before the first comma or full stop when the rest is longer);
+    everything else is the instructions."""
+    import re
+    raw = " ".join((text or "").split()) if "\n" not in (text or "") else text.strip()
+    low = raw.lower()
+    clients = []
+    for p in sorted((C.ROOT / "clients").glob("*.yaml")):
+        prof = C.load_yaml(p) or {}
+        dom = (prof.get("domain") or "").lower().removeprefix("www.")
+        names = {p.stem.lower(), (prof.get("client") or "").lower(), dom, dom.split(".")[0]}
+        names |= {a.lower() for a in prof.get("client_aliases") or []}
+        names |= {n.replace("-", " ") for n in names}  # "gardening-express" is typed "gardening express"
+        first = ((prof.get("client") or "").lower().split() or [""])[0]
+        clients.append((p.stem, {n for n in names if len(n) >= 3}, first))
+    # people shorten a client to its first word ("tapton" for Tapton Capital): allowed when it is distinctive
+    # (5+ letters) and no other client shares it
+    firsts = Counter(f for _, _, f in clients if len(f) >= 5)
+    clients = [(s, n | ({f} if firsts.get(f) == 1 else set())) for s, n, f in clients]
+    found, span = None, None
+    for slug, names in clients:
+        for n in sorted(names, key=len, reverse=True):
+            m = re.search(rf"(?<![\w.-]){re.escape(n)}(?![\w-])", low)
+            if m and (span is None or len(n) > span[1] - span[0]):
+                found, span = slug, (m.start(), m.end())
+    new_domain = None
+    if not found:
+        m = re.search(r"(?<![\w@/.-])((?:https?://)?(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,})(?:/\S*)?", low)
+        if m:
+            new_domain = re.sub(r"^https?://(www\.)?|^www\.", "", m.group(1))
+            span = (m.start(), m.end())
+    rest = raw
+    if span:  # take the client out, with the little words that attach it ("for", "client", ":")
+        rest = raw[:span[0]] + " " + raw[span[1]:]
+        rest = re.sub(r"(?i)\b(for|client|on|at|by)\s*(?=\s*$|\s*[|:,.\-]|\s+--)", " ", rest)
+        rest = re.sub(r"(?i)(^|\s)(for|client)\s*:?\s*$", " ", rest)
+    rest = re.sub(r"^\s*[:,\-–|]+\s*", "", rest.strip())
+    q = re.search(r"[\"“']([^\"”']{3,})[\"”']", rest)
+    if q:
+        keyword = q.group(1)
+        instructions = (rest[:q.start()] + " " + rest[q.end():])
+    else:
+        parts = re.split(r"\s*(?:\||\s--\s|\n)\s*", rest, maxsplit=1)
+        keyword, instructions = parts[0], (parts[1] if len(parts) > 1 else "")
+        if not instructions:
+            m = re.match(r"^([^,.;]{6,90}?)[,.;]\s+(.{12,})$", keyword)
+            if m:
+                keyword, instructions = m.group(1), m.group(2)
+    keyword = re.sub(r"(?i)^\s*(keyword|query|topic|write( a page| an article)?( about| on)?)\s*:?\s*", "", keyword)
+    keyword = re.sub(r"(?i)\s+(for|on|client)\s*$", "", keyword).strip(" :,.-–\"'“”").lower()
+    instructions = re.sub(r"^\s*[:,\-–|]+\s*|\s*[:,\-–|]+\s*$", "", " ".join(instructions.split())).strip()
+    return {"client": found, "new_domain": new_domain, "keyword": keyword, "instructions": instructions,
+            "clients": [s for s, _ in clients]}
+
+
+def start(text: str, mode: str | None = None) -> None:
+    """The single entry point behind /page-seo: a brief file, or a keyword with a client and instructions."""
+    from .prep import load_brief
+    try:  # an existing brief (path or name) runs as it is
+        load_brief(text.strip())
+        print(f"BRIEF {text.strip()}")
+        return next_step(text.strip(), mode)
+    except SystemExit:
+        pass
+    import re
+    # a page address in the request means "this page": decide its type and keyword from the page itself, first
+    um = re.search(r"https?://[^\s\"'<>|]+|(?<![\w@./-])(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}/[^\s\"'<>|]*",
+                   text, re.I)
+    if um:
+        return start_from_page(um.group(0).rstrip(".,;)"), (text[:um.start()] + " " + text[um.end():]), mode)
+    req = parse_request(text)
+    if not req["keyword"] or len(req["keyword"].split()) < 2:
+        raise SystemExit("NEED A KEYWORD: type the search query the page should rank for, e.g. "
+                         "/page-seo nutmeg: what is a lifetime isa | for first-time buyers")
+    if not req["client"] and not req["new_domain"] and (C.ROOT / "briefs" / f"{C.slugify(req['keyword'])}.yaml").exists():
+        req["client"] = "__brief__"  # a brief already exists for this keyword and names its client
+    if not req["client"] and req["new_domain"]:
+        from .onboard import onboard
+        slug = C.slugify(req["new_domain"].split(".")[0])
+        print(f"NEW CLIENT: building clients/{slug}.yaml from {req['new_domain']} …")
+        _quiet(onboard, slug, req["new_domain"])
+        req["client"] = slug
+    if not req["client"]:
+        raise SystemExit("NEED A CLIENT: say which client the page is for (a name or a domain). Known clients: "
+                         + ", ".join(req["clients"]) + ". Then run the same command again with it, e.g. "
+                         f"/page-seo <client>: {req['keyword']}")
+    slug = C.slugify(req["keyword"])
+    path = C.ROOT / "briefs" / f"{slug}.yaml"
+    if path.exists() and req["client"] != "__brief__":
+        b = C.load_yaml(path) or {}
+        prof = C.load_yaml(C.ROOT / "clients" / f"{req['client']}.yaml") or {}
+        if prof.get("client") and b.get("client") != prof.get("client"):
+            slug = f"{slug}-{req['client']}"  # the same keyword for another client is another page
+            path = C.ROOT / "briefs" / f"{slug}.yaml"
+    if not path.exists():
+        from .briefgen import make_brief
+        _quiet(make_brief, req["client"], req["keyword"], slug=slug, instructions=req["instructions"] or None)
+    elif req["instructions"]:
+        import yaml
+        b = C.load_yaml(path) or {}
+        if b.get("instructions") != req["instructions"]:
+            b["instructions"] = req["instructions"]
+            path.write_text(yaml.safe_dump(b, sort_keys=False, allow_unicode=True), encoding="utf-8")
+    from .market import from_text
+    said = from_text(text)
+    if said:
+        import yaml as _y
+        bb = C.load_yaml(path) or {}
+        if bb.get("locale") != said:
+            bb["locale"] = said
+            path.write_text(_y.safe_dump(bb, sort_keys=False, allow_unicode=True), encoding="utf-8")
+    brief_path = f"briefs/{slug}.yaml"
+    who = (C.load_yaml(path) or {}).get("client") or req["client"]
+    print(f"MARKET: {(C.load_yaml(path) or {}).get('locale')} (from {'your request' if said else 'the client profile'})")
+    print(f"BRIEF {brief_path}  (client: {who}; keyword: \"{req['keyword']}\""
+          + (f"; instructions: {req['instructions']}" if req["instructions"] else "") + ")")
+    print(f"From here on, every command uses this brief: {brief_path}")
+    next_step(brief_path, mode)
+
+
+def start_from_page(url: str, rest: str, mode: str | None = None) -> None:
+    """/page-seo with a page address: page type first, then the main keyword, then research (WORKFLOW 0)."""
+    import re
+    import yaml
+    from .domains import org_domain
+    from .pagetype import intake
+    url = url if url.startswith("http") else "https://" + url
+    host = org_domain(url)
+    client = None
+    for p in sorted((C.ROOT / "clients").glob("*.yaml")):
+        prof = C.load_yaml(p) or {}
+        if prof.get("domain") and org_domain("https://" + prof["domain"].removeprefix("www.") + "/") == host:
+            client = p.stem
+            break
+    if not client:
+        from .onboard import onboard
+        client = C.slugify(host.split(".")[0])
+        print(f"NEW CLIENT: building clients/{client}.yaml from {host} …")
+        _quiet(onboard, client, host)
+    print(f"PAGE INTAKE: reading {url} …")
+    info = intake(url)
+    if not info["target_query"]:
+        info["target_query"] = (C.load_yaml(C.ROOT / "clients" / f"{client}.yaml") or {}).get("client", client).lower()
+    # what's left of the request is the operator's instructions, without the words that only point at the page
+    instr = re.sub(r"(?i)\b(please|kindly|can you|write|rewrite|re-write|create|make|optimi[sz]e|improve|update|do|"
+                   r"the|this|that|some|new|seo|content|copy|page|article|blog|post|text|for|of|on|and|client|"
+                   r"website|site|url|link|here|is|it)\b", " ", rest)
+    instr = rest.strip(" :,.-–|") if re.search(r"[a-z]{3,}", instr, re.I) else ""
+    instr = re.sub(r"(?i)^\s*(please\s+)?(write|rewrite|create|make|optimi[sz]e|improve|update)?\s*(the\s+)?"
+                   r"(seo\s+)?(content|copy|page|article)?\s*(for\s+)?(this\s+)?(client\s+)?(and\s+)?(page\s*)?[:,.-]*\s*", "",
+                   instr).strip(" :,.-–|")
+    task = "rewrite" if info["exists"] else "new"
+    seg = [x for x in re.sub(r"https?://[^/]+", "", info["page_url"]).split("/") if x]
+    slug = C.slugify(seg[-1] if seg else f"{client}-home")
+    path = C.ROOT / "briefs" / f"{slug}.yaml"
+    from .briefgen import make_brief
+    if not path.exists():
+        _quiet(make_brief, client, info["target_query"], url=info["page_url"], page_type=info["page_type"], task=task,
+               slug=slug, instructions=instr or None)
+    b = C.load_yaml(path) or {}
+    b.update({"page_url": info["page_url"], "page_type": info["page_type"], "task": task,
+              "page_intake": {"type": info["page_type"], "keyword_from": "H1" if info["h1"] else "address",
+                              "evidence": info["evidence"]}})
+    b.setdefault("target_query", info["target_query"])
+    if instr:
+        b["instructions"] = instr
+    from .market import from_text
+    said = from_text(rest)
+    loc = said or info.get("locale")
+    if loc and loc != b.get("locale"):
+        b["locale"] = loc
+    market_why = ("your request" if said else ("the page (" + ", ".join(info.get("locale_evidence") or []) + ")"
+                                              if info.get("locale") else "the client profile"))
+    path.write_text(yaml.safe_dump(b, sort_keys=False, allow_unicode=True), encoding="utf-8")
+    brief_path = f"briefs/{slug}.yaml"
+    print(f"PAGE TYPE: {info['page_type']} ({'; '.join(info['evidence'][:4])})")
+    print(f"MAIN KEYWORD: \"{b['target_query']}\" (from the page's {'H1' if info['h1'] else 'address'}; change "
+          f"`target_query` in {brief_path} to override)")
+    print(f"TASK: {task} ({'the page exists' if info['exists'] else 'no live page at that address'})")
+    print(f"MARKET: {b.get('locale')} (from {market_why})")
+    print(f"BRIEF {brief_path}  (client: {b.get('client')}" + (f"; instructions: {instr}" if instr else "") + ")")
+    print(f"From here on, every command uses this brief: {brief_path}")
+    next_step(brief_path, mode)
+
+
+def read_page(url: str) -> bool:
+    """Print a page's readable text, for agents whose host has no page-fetch tool. A plain request with the
+    pipeline's normal headers: no rendering service, no stealth. A refusal is reported, never worked around."""
+    res = C.run_async(C.fetch_many([{"url": url, "kind": "page", "parse": "doc"}], timeout=20.0)).get(url) or {}
+    st, state = res.get("status"), res.get("state")
+    if state == "not_html":
+        import httpx
+        try:
+            from pypdf import PdfReader
+            r = httpx.get(url, headers=C.HEADERS, follow_redirects=True, timeout=40)
+            reader = PdfReader(io.BytesIO(r.content))
+            print(f"URL: {r.url}\nSTATUS: {r.status_code}\nTYPE: pdf, {len(reader.pages)} pages\n")
+            for i, pg in enumerate(reader.pages, 1):
+                print(f"--- page {i}\n{(pg.extract_text() or '').strip()}")
+            return True
+        except Exception as e:
+            print(f"UNREADABLE: {url} is not HTML and could not be read as a PDF ({type(e).__name__}).")
+            return False
+    if st in (404, 410):
+        print(f"NOT FOUND: {url} returned {st}. Search for the page's current address; never cite this URL.")
+        return False
+    if st != 200 or state not in ("ok", "needs_js"):
+        print(f"BLOCKED OR UNAVAILABLE: {url} returned {st or type(res.get('error')).__name__} ({state}).")
+        print("Do not try to get round it. Use another route to the same fact (plugins/deep_research/SKILL.md section 8).")
+        return False
+    print(f"URL: {res.get('final_url') or url}\nSTATUS: {st}\nTITLE: {res.get('title', '')}\n")
+    for tag, text in res.get("blocks", []):
+        print(("#" * int(tag[1]) + " " if tag[0] == "h" and tag[1:].isdigit() else "- " if tag == "li" else "") + text)
+    if state == "needs_js":
+        print("\nNOTE: little text came back; the page may build its content with scripts. Prefer another source.")
+    return True
+
+
+def doctor() -> bool:
+    """Check that this machine can run the pipeline. Never prints key values."""
+    import importlib
+    import sys
+    ok = True
+
+    def line(good: bool, msg: str, fix: str = "", hard: bool = True):
+        nonlocal ok
+        print(("OK   " if good else ("FAIL " if hard else "WARN ")) + msg + ("" if good or not fix else f"\n     fix: {fix}"))
+        if not good and hard:
+            ok = False
+    line(sys.version_info >= (3, 10), f"Python {sys.version.split()[0]} (3.10+ needed)", "install Python 3.10 or newer")
+    for mod, pkg in (("httpx", "httpx"), ("yaml", "PyYAML"), ("pycountry", "pycountry"), ("pypdf", "pypdf")):
+        try:
+            importlib.import_module(mod)
+            line(True, f"package {pkg}")
+        except Exception:
+            line(False, f"package {pkg} missing", f"{PY()} install.py   (in {C.ROOT.as_posix()})")
+    # spaCy sharpens matching and the knowledge graph; without it the pipeline runs on plain-rules tokens
+    try:
+        from .nlp import import_spacy
+        import_spacy().load("en_core_web_sm")
+        line(True, "spaCy and en_core_web_sm")
+    except Exception as e:
+        blocked = "Application Control" in str(e) or "DLL load failed" in str(e)
+        line(False, "spaCy unavailable" + (" (Windows Application Control is blocking its compiled library)" if blocked
+                                          else "") + ": runs with plain-rules tokens, no entity graph",
+             "allow Python packages in Windows Security (Smart App Control) if you want spaCy back" if blocked else
+             f"{PY()} -m spacy download en_core_web_sm", hard=False)
+    from . import serper, spider
+    line(bool(serper.api_key() or spider.api_key()), "search key present (SERPER_API_KEY or SPIDER_API_KEY in .env)",
+         f"{PY()} install.py --keys   (asks for the keys and writes .env; or add SERPER_API_KEY=... to "
+         f"{(C.ROOT / '.env').as_posix()})")
+    line(bool(spider.api_key()), "SPIDER_API_KEY present (rendered page content)",
+         "add SPIDER_API_KEY=... to .env; without it pages are fetched directly", hard=False)
+    gi = C.ROOT / ".gitignore"
+    line(gi.exists() and ".env" in gi.read_text(encoding="utf-8").split(), ".env is git-ignored", "add .env to .gitignore")
+    from .harness import manifests
+    ms = manifests()
+    bad = [f"{n} needs {d}" for n, m in ms.items() for d in m.get("needs", []) if d not in ms]
+    bad += [f"{n} has no SKILL.md" for n, m in ms.items() if m.get("kind") == "agent"
+            and not (C.ROOT / "plugins" / n / "SKILL.md").exists()]
+    line(not bad, f"{len(ms)} plugins, dependencies resolve" + ("" if not bad else ": " + "; ".join(bad)))
+    for f in ("WORKFLOW.md", "RULES.md", "AGENTS.md", "docs/EVAL_RUBRIC.md", "plugins/deep_research/SKILL.md",
+              "plugins/expert_review/SKILL.md"):
+        line((C.ROOT / f).exists(), f"{f} present")
+    briefs = sorted(p.name for p in (C.ROOT / "briefs").glob("*.yaml"))
+    print(f"INFO {len(briefs)} briefs in briefs/, {len(list((C.ROOT / 'clients').glob('*.yaml')))} client profiles in clients/")
+    print("DOCTOR PASS" if ok else "DOCTOR FAIL")
+    return ok
+
+
+def _current_run(brief: dict) -> Path | None:
+    from .prep import run_dir
+    rd = run_dir(brief)
+    return rd if rd.exists() else None

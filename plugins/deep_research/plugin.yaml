@@ -1,0 +1,7 @@
+name: deep_research
+kind: agent
+description: The research stage, run as its own agent (a subagent where the host supports one, otherwise a fresh pass). Works the research plan like a professional fact-checker and analyst - question tree, source tiers, lateral reading, tracing claims to their origin, scope and date on every fact, adversarial checks, gap loops - and records every usable finding as a verified fact plus a dossier the writer works from.
+needs: [research_plan]
+modes: [deep, quick]
+budget_s: 900
+outputs: [research/dossier.md, facts appended to fact_sheet.json]

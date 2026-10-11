@@ -1,0 +1,24 @@
+# secrets: API keys live only in .env on each machine (install.py writes it)
+.env
+.env.*
+!.env.example
+.claude/settings.local.json
+
+# each person's own work: briefs, client profiles, runs, fetch cache
+briefs/*
+!briefs/.gitkeep
+clients/*
+!clients/.gitkeep
+runs/*
+!runs/.gitkeep
+cache/
+
+# python and tools
+__pycache__/
+*.pyc
+*.tmp
+*.lock
+.venv/
+venv/
+.DS_Store
+Thumbs.db

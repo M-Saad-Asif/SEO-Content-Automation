@@ -1,0 +1,9 @@
+name: clarity_ux
+kind: script
+description: Microsoft Clarity behaviour data for the page being rewritten (last 1–3 days). Sessions, scroll depth, engagement time, dead clicks, rage clicks, quickbacks, excessive scrolling, turned into concrete structural fixes. Script route with CLARITY_API_TOKEN (10 API calls a day per project, cached 20 hours); MCP route through Microsoft's Clarity MCP server and `seo.py ingest`.
+needs: [current_page]
+modes: [deep, quick]
+when: {task: rewrite}
+connector: clarity
+budget_s: 8
+outputs: [research/clarity_ux.json]
