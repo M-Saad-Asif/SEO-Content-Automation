@@ -1,4 +1,4 @@
-# asdivigitals-seo
+# SEO Content Automation
 
 Pages researched and written the way a senior SEO works, from one command in the coding agent you already use (Claude Code, Cursor, Codex, Antigravity, Gemini CLI, Windsurf, GitHub Copilot).
 
@@ -9,8 +9,8 @@ It reads Google for the right country (intent, format, who ranks, People Also As
 **1. Clone and install** (Python 3.10+ needed: [python.org/downloads](https://www.python.org/downloads/); on Windows tick "Add python.exe to PATH")
 
 ```bash
-git clone <this repo's URL>
-cd asdivigitals-seo
+git clone https://github.com/M-Saad-Asif/SEO-Content-Automation.git
+cd SEO-Content-Automation
 python install.py
 ```
 
