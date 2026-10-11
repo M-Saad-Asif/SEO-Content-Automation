@@ -1,0 +1,80 @@
+# Client profile: shared by every brief for this client (seo.py brief).
+client: House of Velorien
+client_aliases:
+- Velorien
+domain: houseofvelorien.com
+locale: en-GB
+platform: shopify
+hardcode_prices: false
+client_facts:
+- House of Velorien is a retailer that sells bags from the brands Eagle, Fantana and
+  Peter James. It is not the designer or manufacturer.
+approved_claims:
+- Ships across the UK
+banned_claims:
+- guarantee
+banned_phrases:
+- CAA
+- Civil Aviation Authority
+- beeswax
+- unique hazards
+- agile city transit
+- rapid daily transit
+- agile
+- apply strict enforcement
+- strict enforcement on
+- compression
+- soft-press
+- all european airlines
+- board-level meetings
+- maintains its form
+- distributes weight more evenly
+- metal teeth
+- priority expedition
+- professional expedition
+- expedition
+proper_nouns:
+- Eagle
+- Fantana
+- Peter James
+- Canary
+- Shoreditch
+- Marloes
+- Ennismore
+- Ryanair
+- Wizz
+- Air
+- British
+- Airways
+- easyJet
+- Priority
+default_product_sources:
+  collection: bags
+blog_path: /blogs/guides/
+ymyl: false
+known_failures:
+- \bwhen loaded with\b
+- \bthe total load\b
+- ^suspending\b
+- \bwhen set down abruptly\b
+- \bolder regional trains?\b
+- \bcompress(es|ed|ion|ible)?\b
+- \bsoft[- ]press
+- \bshallow overhead racks\b
+reader_nouns:
+- traveller
+- travellers
+- traveler
+- travelers
+- commuter
+- commuters
+synonyms:
+  carry on: cabin
+  carryon: cabin
+  hand luggage: cabin luggage
+  suitcase: case
+  luggage: bag
+  baggage: bag
+internal_codes:
+- \bpj[\s-]?\d{3,}
+- \bbc[\s-]?\d{3,}

@@ -1,0 +1,85 @@
+# Client profile: shared by every brief for this client (seo.py brief).
+client: Master Fast Visas
+client_aliases:
+- MasterFastVisas
+- MFV
+domain: masterfastvisas.com
+locale: en-GB
+platform: other
+client_facts: []
+approved_claims:
+- MasterFastVisas can process a new priority e-visa in under 48 hours
+banned_claims:
+- guarantee
+- guarantees expedited appointment scheduling
+- diplomatic channels
+- global expedited processing network
+- escalate
+- escalation
+- audit
+- liaise
+link_context_bans:
+- url: gov.uk/evisa
+  words:
+  - track
+  - tracker
+  - tracking
+  - application status
+  - status check
+  - check your status
+  - check the status
+  - progress
+  reason: the UKVI account gives access to a granted eVisa; it is not an application
+    tracker
+  fix: describe it as where you view an eVisa after a grant
+proper_nouns:
+- DS-160
+- ISSUED
+- REFUSED
+- UKVI
+- GOV.UK
+- CEAC
+- Visas
+- Immigration
+- United
+- Kingdom
+- States
+- Master
+- Fast
+- MasterFastVisas
+- State
+- Department
+- Visa
+- Status
+- Check
+banned_phrases:
+- National Immigration Administration
+- permanent case number
+- update once per
+- diplomatic channels
+- global expedited processing network
+- expedited processing network
+- authoritative global
+- authoritative
+- tracking directory
+- japan mofa visa console
+- visa console
+- once per business day
+- during evening hours
+blog_path: /blog/
+ymyl: true
+claims_pages:
+- https://masterfastvisas.com/visa-status-check
+known_failures:
+- \bvia (diplomatic|consular) (channels|desks)\b
+- \bliaise directly with\b
+- \bescalation protocol\b
+reader_nouns:
+- applicant
+- applicants
+- traveller
+- travellers
+- traveler
+- travelers
+synonyms:
+  tourist visa: visitor visa

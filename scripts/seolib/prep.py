@@ -38,7 +38,9 @@ def load_brief(path: str | Path) -> dict:
     b = C.load_yaml(p)
     # The client profile is the source of truth for client-level settings (bans, voice, synonyms, reader nouns):
     # anything the brief doesn't set itself comes from the current profile, so profile edits reach old briefs.
-    for prof_path in (C.ROOT / "clients").glob("*.yaml"):
+    # a brief may carry its client's profile beside it (fixtures do, so they run in a fresh clone with no clients/)
+    beside = [p.parent / "client.yaml"] if (p.parent / "client.yaml").is_file() else []
+    for prof_path in beside + sorted((C.ROOT / "clients").glob("*.yaml")):
         prof = C.load_yaml(prof_path) or {}
         if prof.get("client") and prof.get("client") == b.get("client"):
             for k, v in prof.items():
