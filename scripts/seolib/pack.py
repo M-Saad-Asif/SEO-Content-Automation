@@ -48,10 +48,46 @@ def _effective_range(rd: Path, sheet: dict) -> None:
         sheet["brief"]["word_range_effective"] = [e_lo, e_hi]
 
 
+def _settle_page_type(rd: Path, sheet: dict, serp: dict) -> None:
+    """A page type guessed from a keyword (no page address, nothing said) is confirmed by the results: when most of
+    the top 10 are businesses and shops selling the thing (or Google reads it as a buying or local search) and the
+    client sells something, the page is a service page, not a guide."""
+    b = sheet.get("brief") or {}
+    if b.get("page_type_source") != "keyword" or b.get("page_type") != "guide" or not serp or serp.get("error"):
+        return
+    from .pagejob import offer
+    from .pagetype import QUESTION_H1
+    from .briefgen import set_page_type
+    import re
+    q = b.get("target_query") or ""
+    if QUESTION_H1.match(q) or re.search(r"\b(best|vs|versus|compare|review|guide|status|requirements|eligibility)\b", q, re.I):
+        return
+    rows = serp.get("organic", [])[:10]
+    commercial = [o for o in rows if o.get("kind") in ("business_site", "ecommerce", "marketplace")
+                  and o.get("shape") in ("tool_or_service", "product_listing")]
+    primary = (serp.get("intent") or {}).get("primary")
+    # A shop's blog is still a guide. Nor does selling anything prove this client sells THIS thing.
+    terms = set(re.findall(r"[a-z]{3,}", q.lower())) - {"the", "for", "and", "near", "online", "best", "price", "prices"}
+    relevant = [x for x in offer(sheet).get("offers", []) if terms and
+                len(terms & set(re.findall(r"[a-z]{3,}", x.get("text", "").lower()))) >= min(2, len(terms))]
+    if not relevant or len(commercial) < max(3, 0.6 * len(rows)):
+        return
+    ptype = "location" if primary == "local" else (
+        "category" if sum(o.get("shape") == "product_listing" for o in commercial) > len(commercial) / 2 else "service")
+    with C.file_lock(rd / "fact_sheet.json"):
+        sh = C.load_json(rd / "fact_sheet.json")
+        set_page_type(sh["brief"], ptype, "serp")
+        why = (f"Page type: {ptype}; {len(commercial)} of {len(rows)} results have commercial page shapes "
+               f"(intent {primary}); the client's own offer mentions the query topic.")
+        sh["decisions"] = list(dict.fromkeys((sh.get("decisions") or []) + [why]))
+        C.save_json(rd / "fact_sheet.json", sh)
+    sheet["brief"] = sh["brief"]
+    sheet["decisions"] = sh["decisions"]
+
+
 def research_pack(rd: Path) -> None:
     sheet = C.load_json(rd / "fact_sheet.json")
     lm = C.load_json(rd / "link_map.json")
-    _effective_range(rd, sheet)
     # YMYL "auto" is decided by serp_intel, which runs alongside the foundation step: settle it here, once both
     # have finished, so the pack, lint and validate all see the same answer
     s_out = _load(rd, "serp_intel")
@@ -61,6 +97,8 @@ def research_pack(rd: Path) -> None:
             sheet["brief"]["ymyl"] = bool(s_out["ymyl"])
             sheet["brief"]["ymyl_basis"] = f"auto: {s_out.get('authority_results')} authority results in the top 10"
             C.save_json(rd / "fact_sheet.json", sheet)
+    _settle_page_type(rd, sheet, s_out)
+    _effective_range(rd, sheet)
     writer_pack(rd, sheet, lm)
     serp, qmap, comp = _load(rd, "serp_intel"), _load(rd, "query_map"), _load(rd, "competitor_scrape")
     kg, gain, voice = _load(rd, "semantic_graph"), _load(rd, "info_gain"), _load(rd, "site_profile")
@@ -77,6 +115,8 @@ def research_pack(rd: Path) -> None:
               "- SERP features: " + (", ".join(k for k, v in serp["features"].items() if v) or "none"),
               ]
         W += [f"- {n}" for n in serp["composition"]["notes"]]
+        W.append("- SERP intent, dominant format and source mix are research evidence. The Page job above determines "
+                 "this client's structure and next step; a government-heavy SERP does not turn a service page into an official portal guide.")
         W += ["", "Top 10:"]
         W += [f"{o['position']}. {o['title']} ({o['domain']}, {o['kind']}, {o['shape']})" for o in serp["organic"]]
         W.append("")
@@ -123,8 +163,15 @@ def research_pack(rd: Path) -> None:
     if off:
         W += ["## Connectors not used this run"] + off + [""]
     if qmap and not qmap.get("error"):
-        W += ["## Questions to answer as H2s (People Also Ask)",
-              "Use each as an H2 in the reader's words, answered in its first 40–50 words."]
+        from .pagejob import COMMERCIAL
+        if sheet["brief"].get("page_type") in COMMERCIAL:
+            W += ["## Questions to cover (People Also Ask)",
+                  "Answer relevant questions in the offer, process or pricing section, or as FAQ H3s. "
+                  "These are coverage requirements, not a compulsory H2 structure; follow the Page job."]
+        else:
+            W += ["## Questions to cover (People Also Ask)",
+                  "Use a question as an H2 when it deserves a main section; combine close variants. "
+                  "Answer a question heading in its first 40–50 words and follow the Page job."]
         answers = serp.get("paa_answers", {}) if serp else {}
         recs = {r["query"]: r for r in qmap.get("queries", [])}
 
@@ -183,20 +230,18 @@ def research_pack(rd: Path) -> None:
                       f"The brief asks for {lo}–{hi}, but the top pages' median is {med} words: a guide that skips what they "
                       "cover loses to them. Length comes from covering their shared topics and adding your own, never from padding.", ""]
         W += [f"## What the top pages cover ({len(comp['pages'])} read, median {comp.get('median_words')} words)",
-              "Their shared sections, in their order, with every question asked under each: `topic_outline.md`."]
+              "Read `article_context.json`: sections ordered by this page's task and relevance, with source coverage and all search demand retained."]
         if comp.get("skipped"):
             W.append("Not read: " + "; ".join(f"{s['url']} ({s['why']})" for s in comp["skipped"][:8]))
         W.append("")
     if kg and not kg.get("error"):
         g = kg.get("graph") or {}
-        W += ["## Knowledge graph and topic outline (read both before the outline and the draft)",
-              f"- `knowledge_graph.md`: {len(g.get('entities', []))} entities of this topic in this market, typed and defined, "
+        W += ["## Article context (read article_context.json before outlining and drafting)",
+              f"- `semantic_inventory`: {len(g.get('entities', []))} entities of this topic in this market, typed and defined, "
               f"{len(g.get('attributes', []))} attributes with the values the ranking pages state, "
               f"{len(g.get('relations', []))} relationships, and the verified facts attached to each entity. What to say.",
-              "- `topic_outline.md`: the sections the ranking pages share, macro to micro, and every People Also Ask "
-              "question, related search and competitor question placed in the section that answers it. What to cover.",
-              ("- Numbers on this page come only from verified facts; values in the graph are leads." if ymyl else
-               "- A value three or more sites state may be used as stated; any other number needs a verified fact.")]
+              "- `sections`, `coverage_requirements` and `search_demand`: retain relevant topics and questions, place them according to page purpose, and explain exclusions.",
+              "- `usable_facts` are scoped evidence. Competitor values and source blocks are leads to verify, including values repeated across sites."]
         if kg.get("must_cover_entities"):
             W.append("- Must-cover entities (in 40%+ of top pages): " + ", ".join(kg["must_cover_entities"]))
         if kg.get("contradictions"):

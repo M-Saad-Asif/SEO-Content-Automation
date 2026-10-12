@@ -5,9 +5,12 @@ import asyncio
 import hashlib
 import html as htmlmod
 import json
+import os
 import re
 import sys
+import threading
 import time
+import tempfile
 from datetime import datetime, timezone
 from html.parser import HTMLParser
 from pathlib import Path
@@ -61,35 +64,124 @@ def load_json(path: Path, default=None):
 
 def save_json(path: Path, data) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=1)
-    tmp.replace(path)
+    # Parallel cache writers must not share a temporary filename.
+    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent,
+                                     prefix=path.name + ".", suffix=".tmp", delete=False) as f:
+        tmp = Path(f.name)
+        try:
+            json.dump(data, f, ensure_ascii=False, indent=1)
+        except BaseException:
+            f.close()
+            tmp.unlink(missing_ok=True)
+            raise
+    try:
+        with file_lock(path):
+            for attempt in range(6):
+                try:
+                    tmp.replace(path)
+                    break
+                except PermissionError:
+                    if attempt == 5:
+                        raise
+                    time.sleep(0.01 * 2 ** attempt)  # Windows readers and file scanners can briefly deny replacement
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 class file_lock:
-    """Cross-process lock (lock file created with O_EXCL) for read-modify-write
-    of shared files, so parallel `--add-fact` calls cannot overwrite each other."""
+    """Cross-process lock (lock file created with O_EXCL, holding the owner's process id) for read-modify-write of
+    shared files, so parallel `--add-fact` calls cannot overwrite each other.
+
+    Re-entrant within a process: `add_fact` holds the fact-sheet lock while the writer pack it rebuilds takes the
+    same lock again. A non-re-entrant lock made every added fact wait out the stale-lock timeout (30 s per fact, more
+    than half of an hour-long run), and the inner release freed the outer lock early."""
+
+    _held: dict = {}  # (process, lock path) -> recursion depth; protected by the per-path RLock
+    _locks: dict = {}
+    _guard = threading.RLock()
 
     def __init__(self, path: Path, timeout: float = 30.0):
         self.lock = Path(str(path) + ".lock")
         self.timeout = timeout
+        self.key = (os.getpid(), os.path.normcase(str(self.lock.resolve())))
+        with file_lock._guard:
+            self.local = file_lock._locks.setdefault(self.key, threading.RLock())
+
+    def _stale(self) -> bool:
+        """The owner is gone (its process no longer runs), or the lock is far older than any write takes."""
+        try:
+            pid = int((self.lock.read_text(encoding="utf-8") or "0").strip() or 0)
+        except (OSError, ValueError):
+            return False
+        if pid and pid != os.getpid():
+            return not _pid_alive(pid)
+        return False
 
     def __enter__(self):
-        import os
-        t0 = time.time()
-        while True:
-            try:
-                fd = os.open(self.lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-                os.close(fd)
+        deadline = time.monotonic() + self.timeout
+        if not self.local.acquire(timeout=self.timeout):
+            raise TimeoutError(f"Timed out waiting for {self.lock}")
+        try:
+            if file_lock._held.get(self.key):
+                file_lock._held[self.key] += 1
                 return self
-            except FileExistsError:
-                if time.time() - t0 > self.timeout:  # stale lock from a crashed process
-                    self.lock.unlink(missing_ok=True)
-                time.sleep(0.05)
+            while True:
+                try:
+                    fd = os.open(self.lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                    try:
+                        os.write(fd, str(os.getpid()).encode())
+                    finally:
+                        os.close(fd)
+                    file_lock._held[self.key] = 1
+                    return self
+                except FileExistsError:
+                    if self._stale():
+                        self.lock.unlink(missing_ok=True)
+                        continue
+                    if time.monotonic() >= deadline:
+                        raise TimeoutError(f"Timed out waiting for {self.lock}; its live owner was not interrupted")
+                    time.sleep(min(0.05, max(0, deadline - time.monotonic())))
+        except BaseException:
+            self.local.release()
+            raise
 
     def __exit__(self, *exc):
-        self.lock.unlink(missing_ok=True)
+        try:
+            depth = file_lock._held.get(self.key, 1) - 1
+            if depth > 0:
+                file_lock._held[self.key] = depth
+                return
+            file_lock._held.pop(self.key, None)
+            self.lock.unlink(missing_ok=True)
+        finally:
+            self.local.release()
+
+
+def _pid_alive(pid: int) -> bool:
+    import os
+    if os.name == "nt":
+        import ctypes
+        from ctypes import wintypes
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        kernel.OpenProcess.restype = wintypes.HANDLE
+        kernel.GetExitCodeProcess.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD)]
+        kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+        h = kernel.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+        if not h:
+            return ctypes.get_last_error() != 87  # access denied is not proof the process is dead
+        try:
+            code = wintypes.DWORD()
+            return not kernel.GetExitCodeProcess(h, ctypes.byref(code)) or code.value == 259
+        finally:
+            kernel.CloseHandle(h)
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
 
 
 def lexicon() -> dict:
@@ -434,7 +526,7 @@ async def fetch_many(reqs: list[dict], refresh: bool = False, concurrency: int =
         url, parse = r["url"], r.get("parse", "html")
         follow = parse != "status"
         res = None
-        for attempt in range(1, max(attempts, 2) + 1):
+        for attempt in range(1, max(attempts, 1) + 1):
             t0 = time.time()
             try:
                 async with sem:
@@ -472,7 +564,7 @@ async def fetch_many(reqs: list[dict], refresh: bool = False, concurrency: int =
                             res["state"] = "needs_js"
                 if st >= 500 and attempt < attempts:
                     continue
-                if st == 429 and attempt < max(attempts, 2):
+                if st == 429 and attempt < attempts:
                     # the site asked us to slow down: wait as long as it says (capped), then ask once more
                     ra = resp.headers.get("retry-after", "")
                     await asyncio.sleep(min(float(ra) if ra.replace(".", "", 1).isdigit() else 6.0, 20.0))

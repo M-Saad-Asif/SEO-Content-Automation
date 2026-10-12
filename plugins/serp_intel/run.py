@@ -36,7 +36,7 @@ def classify(q, organic, features):
             score["informational"] += n * 0.3
     if kinds.get("government", 0) >= 3:
         score["navigational"] += 2
-        ev.append(f"{kinds['government']} government pages rank: people want the official service")
+        ev.append(f"{kinds['government']} government pages rank: strong official-source/navigation signal; the page's offer and purpose still come from the brief and client")
     if features.get("places"):
         score["local"] += 4
         ev.append("local pack shown")
@@ -164,12 +164,17 @@ def run(ctx):
     exp_queries = []
     if ctx.deep():
         exp_queries = paa[:2] if paa else [a for a in auto if len(a.split()) >= len(q.split())][:3]
+        # Related query text is not a URL. Look up a bounded set in the same search wave to obtain actual
+        # source URLs, while retaining every related query in the demand inventory.
+        exp_queries = list(dict.fromkeys(exp_queries + related[:2]))
     expansions = {}
     if exp_queries:
         more, cr = serper.batch([("search", e) for e in exp_queries], paa_locale)
         ctx.credits += cr
         for (_, e), r in more.items():
-            expansions[e] = {"paa": [p.get("question") for p in r.get("peopleAlsoAsk", []) if p.get("question")
+            expansions[e] = {"source": "paa" if e in paa else "related" if e in related else "autocomplete",
+                             "locale": paa_locale,
+                             "paa": [p.get("question") for p in r.get("peopleAlsoAsk", []) if p.get("question")
                                      and not (paa_locale != b["locale"] and foreign(p.get("question"), b["locale"]))],
                              "related": [x.get("query") for x in r.get("relatedSearches", []) if x.get("query")
                                          and not (paa_locale != b["locale"] and foreign(x.get("query"), b["locale"]))],
@@ -246,8 +251,9 @@ def run(ctx):
         comp["notes"].append("Forums rank: Google rewards first-hand experience here. The strongest is the client's own "
                              "(its guides, data, staff know-how); a quoted forum comment from the reader's country is second.")
     if kinds.get("government", 0) >= 3:
-        comp["notes"].append("Official sources dominate: route people to the official service and add what those "
-                             "pages lack (costs, conditions, what to expect, what to do when it goes wrong).")
+        comp["notes"].append("Official sources dominate: verify rules, fees, conditions and mandatory actions against them. "
+                             "Keep the brief's page purpose and scoped client offer; official-source prevalence does not "
+                             "turn a commercial page into an official-service guide. Add useful verified context and avoid repeated competing CTAs.")
     if kinds.get("video", 0) >= 2:
         comp["notes"].append("Video ranks: people want to see the steps. Use numbered, screen-by-screen steps.")
     if kinds.get("marketplace", 0) + kinds.get("ecommerce", 0) >= 4:

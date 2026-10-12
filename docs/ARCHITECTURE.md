@@ -4,7 +4,7 @@ Every stage of the work a senior SEO does is a plugin in `plugins/<name>/`, run 
 
 ## The run, end to end
 
-`python scripts/seo.py next <brief>` is the only entry point (`scripts/seolib/driver.py`). It runs every script step itself and prints one agent task at a time; the agent confirms judgement tasks with `seo.py done`. State lives in `runs/<run>/state.json`.
+`python scripts/seo.py start <request>` performs intake; `site` prepares reusable website context/queues, and `batch` resumes queues. `python scripts/seo.py next <brief>` drives an individual page (`scripts/seolib/driver.py`). It runs every script step itself and prints one agent task at a time; the agent confirms judgement tasks with `seo.py done`. State lives in `runs/<run>/state.json`.
 
 | # | Stage | Who | Output |
 |---|---|---|---|
@@ -36,8 +36,8 @@ Run in waves by `scripts/seolib/harness.py`; plugins in one wave run in parallel
 | `official_facts` | Pull verbatim facts from the authorities for the topic, with scope | facts in `fact_sheet.json` |
 | `info_gain` | Find what the top pages lack: forums, reviews, first-hand experience | `research/info_gain.json` |
 | `query_map` | Decide for each related query: H2 here, inside a section, link to an existing page, separate page, or drop | `research/query_map.json` |
-| `semantic_graph` | The knowledge graph of the topic in this market (`seolib/graph.py`, plain rules, spaCy sharpens types): typed entities with aliases and definitions, attribute values with the sites that state them, relationships; plus consensus figures and heading topics | `research/semantic_graph.json` → `knowledge_graph.md` |
-| `topic_outline` | Every PAA, related, Search Console and competitor question placed in the sections the ranking pages share, macro to micro, each with its entities, figures and facts | `research/topic_outline.json` → `topic_outline.md` |
+| `semantic_graph` | The knowledge graph of the topic in this market (`seolib/graph.py`, plain rules, spaCy sharpens types): typed entities with aliases and definitions, attribute values with the sites that state them, relationships; plus consensus figures and heading topics | `research/semantic_graph.json` → `article_context.json` |
+| `topic_outline` | Every PAA, related, Search Console and competitor question placed in the sections the ranking pages share, macro to micro, each with its entities, figures and facts | `research/topic_outline.json` → `article_context.json` |
 | `research_plan` | Turn all of it into the researcher's brief: questions, five reader perspectives, shared topics T1..Tn, figures to trace, client pages, where to look | `research_plan.md` |
 
 Agent stages ship a `SKILL.md` (`deep_research`, `expert_review`, `fact_check`); the writer follows `RULES.md` and the WORKFLOW section the task names.
@@ -108,3 +108,15 @@ An agent plugin ships a `SKILL.md`. To swap a stage, replace its folder. To add 
 | Information-gain searches | yes | no |
 | Outline gate | yes | no |
 | Typical total | 3–6 min | 2–4 min |
+
+## Website context and JSON writing handoff (October 2026)
+
+`seolib/sitecontext.py` resolves an explicit project binding before a single-profile fallback, matches hosts exactly, and builds a resumable same-site inventory from robots/sitemaps/internal links. Parsed documents share versioned fetch cache keys with foundation/intake. The inventory records H1/title/query/type, purpose excerpts, read states and gaps. Thin successful pages may use Spider; refused/error pages stay gaps. A page cap or an inaccessible page cannot become a claim that the whole website was read.
+
+`seolib/batch.py` normalises TXT/CSV/JSON/YAML requests, matches existing pages, blocks ambiguous mappings, merges queries targeting one URL, and prepares briefs before starting the first page. Plans retain pending/running/complete/blocked states and mode. The normal page completion branch advances the plan only after validation, editorial review and fact-checking. New plans include their fingerprint in brief names so changed instructions cannot silently reuse a completed run from another plan.
+
+`seolib/article_context.py` builds one cached JSON handoff: page job, website catalog, scoped usable facts, entities/attributes/values, semantic triplets/relationships, definitions, search demand, source metadata/passages, sections and coverage requirements. Full parser blocks are retained once in competitor_scrape.json and indexed by source/block id. The focused semantic inventory is heuristic: per-page processing, extraction limits, market exclusions and unread sources are visible. Nothing here establishes an exhaustive knowledge graph or perfect rankings. `kgdoc.write_docs` keeps its compatibility entry point but renders Markdown only for explicit `research_format: markdown`.
+
+Deep research sends up to ten eligible organic URLs plus four PAA source URLs and two related/expanded-search sources to Spider in one bounded wave; quick mode uses five organic plus two PAA sources. Related queries are looked up in the same SERP expansion wave to obtain real URLs. All PAA/related/autocomplete/expansion text remains in search demand regardless of source budgets. Extraction is cached by source, demand, locale, market strictness and code. New facts refresh the article context without re-extracting unchanged competitor text.
+
+Section priorities use main-task relevance and source support before observed competitor order. Coverage is enforced through explicit placements/exclusions, including paragraphs, tables and FAQs on all page types. Lexical routing/coverage checks are advisory because paraphrases and page purpose can invalidate a keyword-only inference; factual verification remains enforced. The editor must account for every required coverage id in the final page.

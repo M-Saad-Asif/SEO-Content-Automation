@@ -110,50 +110,71 @@ def md_blocks(md: str) -> list[list[str]]:
 
 # ---------------------------------------------------------------- calls
 
-async def _scrape_one(client, url: str, sem) -> dict:
+async def _scrape_one(client, url: str, sem, *, attempts: int = 2, refresh: bool = False,
+                      request_timeout: float = 40) -> dict:
     key = f"spider|scrape2|{url}"  # scrape2: headings written as a bare "##" line are now kept
     cached = C.load_json(C._cache_path(key))
-    if cached and time.time() - cached.get("_ts", 0) < TTL:
+    if not refresh and cached and time.time() - cached.get("_ts", 0) < TTL:
         cached["cached"] = True
         return cached
-    body = {"url": url, "limit": 1, "return_format": "markdown", "request": "smart", "request_timeout": 40,
+    body = {"url": url, "limit": 1, "return_format": "markdown", "request": "smart", "request_timeout": request_timeout,
             "max_credits_per_page": 200}
     async with sem:
-        for attempt in (1, 2):
+        for attempt in range(1, max(1, attempts) + 1):
             try:
                 r = await client.post(f"{ENDPOINT}/scrape", json=body, headers=_headers())
-                if r.status_code == 429 and attempt == 1:
+                if r.status_code == 429 and attempt < attempts:
                     await asyncio.sleep(3)
                     continue
                 d = r.json()
                 item = d[0] if isinstance(d, list) and d else (d if isinstance(d, dict) else {})
+                status = item.get("status") or r.status_code
+                if r.status_code != 200 or str(status) != "200":
+                    return {"url": url, "status": status, "state": "error", "via": "spider"}
                 md = item.get("content") or ""
                 blocks = md_blocks(md)
                 words = sum(len(x.split()) for t, x in blocks if t in ("p", "li"))
                 title = next((x for t, x in blocks if t == "h1"), "")
-                res = {"url": url, "status": item.get("status") or r.status_code, "final_url": item.get("url") or url,
+                res = {"url": url, "status": status, "final_url": item.get("url") or url,
                        "state": "ok" if md and words >= 80 else ("needs_js" if md else "error"), "blocks": blocks,
                        "words": words, "title": title, "text": " ".join(x for _, x in blocks),
                        "cost": (item.get("costs") or {}).get("total_cost", 0), "via": "spider",
                        "fetched_at": C.now_iso()}
                 return C.cache_put(key, res) if res["state"] == "ok" else res
             except Exception as e:
-                if attempt == 2:
+                if attempt >= attempts:
                     return {"url": url, "status": 0, "state": "error", "error": type(e).__name__, "via": "spider"}
                 await asyncio.sleep(1.5)
     return {"url": url, "status": 0, "state": "error", "via": "spider"}
 
 
-def scrape_many(urls: list[str], concurrency: int = 5) -> dict[str, dict]:
-    """Rendered content of each URL, one page per site, cached. {url: result in fetch_many's 'doc' shape}."""
+async def _bounded_scrape(client, url, sem, timeout_s, attempts, refresh):
+    try:
+        return await asyncio.wait_for(
+            _scrape_one(client, url, sem, attempts=attempts, refresh=refresh,
+                        request_timeout=min(40, max(1, int(timeout_s - 2)))), timeout=timeout_s)
+    except asyncio.TimeoutError:
+        return {"url": url, "status": 0, "state": "timeout", "error": "render_budget_exceeded",
+                "via": "spider", "budget_s": timeout_s}
+
+
+def scrape_many(urls: list[str], concurrency: int = 5, *, timeout_s: float = 70,
+                attempts: int = 2, refresh: bool = False) -> dict[str, dict]:
+    """Rendered content, cached, with a per-URL elapsed budget including queueing and retries.
+
+    Completed pages survive other pages timing out. Failed pages remain explicit research gaps.
+    """
     if not urls or not api_key():
         return {}
+    if timeout_s <= 0 or concurrency < 1 or attempts < 1:
+        raise ValueError("Rendering timeout, concurrency and attempts must be positive")
+    urls = list(dict.fromkeys(urls))
     import httpx
 
     async def go():
         sem = asyncio.Semaphore(concurrency)
         async with httpx.AsyncClient(timeout=httpx.Timeout(70.0, connect=10.0)) as client:
-            out = await asyncio.gather(*(_scrape_one(client, u, sem) for u in urls))
+            out = await asyncio.gather(*(_bounded_scrape(client, u, sem, timeout_s, attempts, refresh) for u in urls))
         return {u: r for u, r in zip(urls, out)}
     return C.run_async(go())
 

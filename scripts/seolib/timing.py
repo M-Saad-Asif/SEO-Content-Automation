@@ -1,9 +1,7 @@
 """timing.json: every script call stamps itself, so the agent never has to.
 
-Agent phases (research, draft, fix) are the gaps between script calls:
-  prep end -> last --add-fact      = research
-  that point -> first lint start   = draft
-  lint end -> next lint/validate   = fix
+The driver records agent task boundaries; fact registration is a nested span.
+Legacy logs without those boundaries expose unclassified work before checks.
 Interactive waits (`seo.py mark <run> wait start|end`) are subtracted.
 """
 from __future__ import annotations
@@ -13,15 +11,21 @@ from pathlib import Path
 
 from . import common as C
 
-BUDGET = {"prep": 45, "research": 60, "draft": 120, "lint": 5, "fix": 40, "validate": 10, "total": 300}
-BUDGET_DEEP = {"prep": 90, "research": 60, "draft": 300, "lint": 5, "fix": 60, "validate": 15, "total": 720}
+BUDGET = {"prep": 45, "research": 360, "draft": 120, "lint": 5, "fix": 40, "validate": 10, "total": 900}
+BUDGET_DEEP = {"prep": 90, "research": 900, "expert": 300, "outline": 60, "draft": 240,
+               "lint": 5, "fix": 60, "validate": 15, "total": 2100}
 
 
 def mark(rd: Path, step: str, ev: str, fresh: bool = False) -> None:
     p = rd / "timing.json"
+    with C.file_lock(p):
+        _mark(p, step, ev, fresh)
+
+
+def _mark(p: Path, step: str, ev: str, fresh: bool) -> None:
     if fresh and p.exists():  # keep the previous attempt's evidence
-        n = len(list(rd.glob("timing.prev-*.json"))) + 1
-        p.replace(rd / f"timing.prev-{n}.json")
+        n = len(list(p.parent.glob("timing.prev-*.json"))) + 1
+        p.replace(p.parent / f"timing.prev-{n}.json")
     data = None if fresh else C.load_json(p)
     if not data or not isinstance(data, dict):
         data = {"events": []}
@@ -47,6 +51,15 @@ def summarise(events: list[dict]) -> dict:
             open_w = None
 
     s: dict = {}
+    starts, measured = {}, {}
+    for e in events:
+        if not e["step"].startswith("agent:") and e["step"] != "facts":
+            continue
+        if e["ev"] == "start":
+            starts.setdefault(e["step"], e["t"])
+        elif e["ev"] == "end" and e["step"] in starts:
+            key = e["step"].removeprefix("agent:")
+            measured[key] = measured.get(key, 0) + max(0, e["t"] - starts.pop(e["step"]))
     p0, p1 = first("prep", "start"), first("prep", "end")
     if p0 is None:
         return s
@@ -69,7 +82,8 @@ def summarise(events: list[dict]) -> dict:
         s["verify_calls"] = len(verify)
     draft_from = max(x for x in (p1, research_end) if x) if p1 else None
     if draft_from and checks:
-        s["draft"] = max(0.0, checks[0][1] - draft_from)
+        # Old logs have no agent boundaries: this includes research, expert and outline, not just drafting.
+        s["precheck_work"] = max(0.0, checks[0][1] - draft_from)
     lints = [c for c in checks if c[0] == "lint"]
     vals = [c for c in checks if c[0] == "validate"]
     if lints:
@@ -81,10 +95,15 @@ def summarise(events: list[dict]) -> dict:
     if fix:
         s["fix"] = fix
     v1 = vals[-1][2] if vals else None
-    end = v1 or (checks[-1][2] if checks else p1)
+    end = max((e["t"] for e in events if e["step"] != "wait"), default=p1)
     if end:
         s["waits"] = waits
         s["total"] = end - p0 - waits
+    if measured:
+        if any(e["step"].startswith("agent:") for e in events):
+            s.pop("precheck_work", None)
+            s.pop("fix", None)
+        s.update(measured)
     s = {k: (round(v, 1) if isinstance(v, float) else v) for k, v in s.items()}
     s["over_budget"] = [k for k, v in s.items() if k in BUDGET and isinstance(v, (int, float)) and v > BUDGET[k]]
     return s
@@ -95,10 +114,13 @@ def table(summary: dict, mode: str = "quick") -> str:
     over = [k for k, v in summary.items() if k in budget and isinstance(v, (int, float)) and v > budget[k]]
     summary = {**summary, "over_budget": over}
     rows = [f"| Step ({mode} mode) | Seconds | Budget |", "|---|---:|---:|"]
-    for k in ("prep", "research", "draft", "lint", "fix", "validate", "waits", "total"):
+    for k in ("prep", "precheck_work", "research", "facts", "expert", "outline", "draft", "lint", "review",
+              "expert_read", "editor", "verify", "internal_links", "fix", "validate", "waits", "total"):
         if k in summary:
             b = budget.get(k, "")
             flag = " ⚠" if k in summary.get("over_budget", []) else ""
-            label = "research (plugins)" if k == "prep" else ("outline + draft" if k == "draft" and mode == "deep" else k)
+            label = {"prep": "research (plugins)", "precheck_work": "work before first check (legacy log)",
+                     "facts": "fact registration (included in agent stages)", "expert_read": "expert read",
+                     "internal_links": "internal links"}.get(k, k)
             rows.append(f"| {label} | {summary[k]}{flag} | {b} |")
     return "\n".join(rows)

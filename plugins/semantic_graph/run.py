@@ -2,6 +2,9 @@
 relationships, definitions, every node and edge with its sources), the figures most top pages agree on, the heading
 topics Google expects, and the PAA questions no top page answers."""
 import re
+import hashlib
+import json
+from pathlib import Path
 from collections import Counter, defaultdict
 
 STOPW = set("a an the and or of to in on for with by from at as is are be your our their its this that these those "
@@ -34,6 +37,13 @@ def run(ctx):
     # whole pages from another market are left out only where the market decides the facts (YMYL: money, law, health)
     ym = ctx.brief.get("ymyl")
     strict = ym is True or (ym not in (True, False) and bool(serp.get("ymyl")))
+    # Local extraction is already JSON. Fact verification alone need not extract sources again.
+    code = [hashlib.sha256(Path(p).read_bytes()).hexdigest() for p in (__file__, G.__file__)]
+    digest = hashlib.sha256(json.dumps([code, pages, searches, qmap0, strict, ctx.brief.get("target_query"),
+                                       ctx.brief.get("locale"), ctx.brief.get("synonyms")], sort_keys=True).encode()).hexdigest()
+    previous = ctx.load("semantic_graph") or {}
+    if not ctx.refresh and previous.get("input_digest") == digest:
+        return previous
     kg_full = G.build(pages, ctx.brief.get("target_query", ""), ctx.brief.get("locale") or "en-GB", searches,
                       strict_market=strict)
     kg_full.pop("unnamed_figures", None)
@@ -145,6 +155,7 @@ def run(ctx):
         decisions.append(f"{len(gaps)} People Also Ask question(s) are not answered by any top-10 page: "
                          "answering them is this page's information gain.")
     return {
+        "input_digest": digest,
         "pages_analysed": n_pages, "entities": ent_list, "must_cover_entities": must,
         "attributes": attrs, "triples_consensus": consensus[:60], "triples_unique": unique,
         "contradictions": contra, "heading_topics": expected, "paa_gaps": gaps, "decisions": decisions,

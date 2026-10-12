@@ -3,5 +3,5 @@ kind: script
 description: Finds official sources for the topic without a hand-written list. Government and education pages in the SERP, the brand's own site when the query names a brand, and (YMYL) one search on the country's government domain. Extracts rule and number sentences verbatim as verified facts with their source page, so the writer has citable facts for every page.
 needs: [serp_intel, competitor_scrape, foundation]
 modes: [deep, quick]
-budget_s: 12
+budget_s: 45  # diagnostic target; direct fetch 8s, rendered fallback 20s, plus source searches
 outputs: [research/official_facts.json, facts appended to fact_sheet.json]

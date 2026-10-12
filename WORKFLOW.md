@@ -25,9 +25,11 @@ You are the writer. Plugins (in `plugins/`) do the research and the checks. Run 
 | 6 | Humanize (targeted fix) | you | ≤ 60 s | ≤ 40 s |
 | 7 | Final verify | script | ≤ 15 s | ≤ 10 s |
 
-Timing is automatic: every script call stamps `timing.json`, and your steps are the gaps between calls.
+Timing is automatic: the driver stamps each agent task and script check in `timing.json`; fact registration has its own nested duration. Old logs without task boundaries report work before the first check together rather than calling all of it drafting. Budgets are diagnostic, not runtime guarantees.
 
 ## 0. Page intake (when the request names a page)
+
+Intake also accepts a keyword using a saved website context, a bare domain (homepage), or a website plus a keyword/page list. `seo-context.yaml` binds one client; otherwise a single saved profile is reused. Missing/ambiguous website context is asked for before research. `site` discovers same-site sitemaps/internal links, records the purpose and page catalog, and prepares selected/all known pages without starting articles. The queue resumes through `batch`, completing one page before advancing. Incomplete discovery and unread pages remain explicit. A keyword matching an existing page uses that page's type and retains the operator's keyword; ambiguous page matches require a URL.
 
 `seo.py start` reads the page first and decides its type (service, product, category, home, location, guide, company) from its address, its offer (rates, prices, apply, quote, forms), its markup and its blog furniture, then takes the main keyword from its H1 (else its address). The page type sets how the page is built (RULES, "Fit the page type"); the keyword sets the research. Both are logged and can be overridden in the brief.
 
@@ -64,7 +66,7 @@ The researcher follows `plugins/deep_research/SKILL.md`: it works `runs/<run>/re
 python scripts/seo.py prep <brief> --add-fact <id> "<claim with its condition>" "<exact words from the page>" <final URL> --scope "<who/what/when it applies to>"
 ```
 
-one call at a time, and writes `runs/<run>/research/dossier.md`: the main answer, an evidence-backed answer per question, conflicts and how they resolve, a "do not say" list and the gaps. Nothing reaches the page that is not in the pack's facts or the dossier.
+for an isolated late fact. For the main research pass, save findings as a list in `research/facts.yaml` and call `prep <brief> --add-facts <file>` once; retry only rejected entries. Write `runs/<run>/research/dossier.md`: the main answer, an evidence-backed answer per question, conflicts and how they resolve, a "do not say" list and the gaps. Nothing reaches the page that is not in the pack's facts or the dossier.
 
 ## 2b. Expert review (deep mode; its own role)
 
@@ -76,15 +78,18 @@ The writer turns the expert notes into the page's recommendations and cautions, 
 
 Write `runs/<run>/outline.md`:
 
+- on commercial pages, start with `Page job: <type>; offer facts: <scoped ids>; next step: <verified target or not verified>`. This is a planning note, not page copy. Put offer, process, proof and the next step in their appropriate places for the type; omit sections the product or service does not need
+
 - one H1 (the live H1 when the page exists), then H2s and H3s from macro to micro
-- built from `topic_outline.md`: its sections are what the ranking pages share, in their order. Take the ones that fit the page type, one H2 each in the reader's words, sub-sections as H3s where the page needs them, and place every question it lists: **[H2]** as a heading, **[in section]** answered inside that section, **[link]** briefly with the link. One-site sections and questions are optional angles
-- every "Questions to answer as H2s" item as an H2 in the reader's words. A question with no verifiable answer, or a different intent, gets a line `Skip: <question> — <reason>` instead of a heading
+- shaped by the writer pack's "Page job": on a service, product, category, location, home or company page the sections follow its structure for that type (the client's offer and next step in the opening, how it works with the client, the rules as cited evidence, the client's step to close); `article_context.json`'s sections and questions fill that structure, they don't replace it
+- built from `article_context.json`: its sections prioritise the main task and entity relevance for this page type; competitor order is supporting evidence. Use H2/H3, paragraphs, tables or FAQs as appropriate. Retain all relevant coverage; one-site angles remain available when useful and verified
+- resolve every required `coverage_requirements` id: `Coverage: S1,Q003 — body under <heading>, table or FAQ placement` or `Exclude: Q004 — <specific relevance/evidence reason>`. These are planning notes, never publish them. Other questions also need a relevance decision; a question does not automatically require a separate heading on any page type. A question with no verifiable answer or another intent gets a `Skip: <question> — <reason>` line too
 - a PAA question that restates the H1 is answered in the opening paragraph: record a `Skip:` line instead of an H2
 - an "answer lead" under a question is a source to check, not a fact: verify any number in it with `--add-fact` against its link before using it, and answer for this page's locale (the leads may come from the US SERP)
-- links, not sections, for `existing_page` queries: answer in two or three sentences inside the closest section and link the page, and record `Linked: <question> — <url>`; nothing for `separate_page` queries (when a question is both an H2 question and a separate page's topic, the separate page wins: record a `Skip:` line; the one exception is the target query's own task, which this page always covers)
+- prefer a contextual link for a query already served by a client page. Query-map routing is a suggestion: check it against the source context and main task before excluding detail. Record placements or exclusions; the main task is always covered here
 - the main task or answer first, in the order the top pages answer it; background and edge cases after
 - the expected topics that fit the page type
-- one line under each heading naming the facts (their ids), knowledge-graph entities and figures, or info-gain items it uses: `topic_outline.md` lists them per section, `knowledge_graph.md` gives their definitions, values and sources
+- one line under each heading naming its fact ids and relevant semantic items: `article_context.json` contains the sections, usable facts, entity/attribute/value inventory, relationships, definitions and source references. Raw parser blocks remain indexed in `research/competitor_scrape.json`; open them only when evidence needs inspection
 
 `next` then runs the outline check and prints any `B` lines to fix.
 
@@ -93,10 +98,11 @@ Write `runs/<run>/outline.md`:
 Write `runs/<run>/draft.md` in a single pass, following RULES.md in full:
 
 - front matter with `title` and `meta_description`, then one H1
+- the job the writer pack's "Page job" gives the page (RULES section 0): on a commercial page the client's scoped offer and verified next step near the opening and close; official sources cited as evidence, necessary official actions explained accurately, and material limitations and disclosures retained without repetition
 - the dossier's main answer first; its answers per question, its conflict resolutions and its "do not say" list followed exactly
 - the expert notes' recommendations, mistakes and warnings, as the brand's view, each resting on the evidence the notes cite
-- only the facts, products and checks, knowledge-graph items (under the usage rules at the top of `knowledge_graph.md`), attributed info-gain items, approved client claims and listed links
-- every question `topic_outline.md` places in a section you kept, answered there in its own words (or recorded as a `Skip:` in the outline); the entities it lists for that section named where they belong, defined on first use when a reader might not know them
+- use the scoped facts, products/checks, verified semantic items, attributed experience and listed links under `article_context.json` usage rules. Repeated competitor claims are evidence leads, not independent verification
+- fulfil the coverage plan across the page, including body/table/FAQ answers. Check optional search demand for relevant omissions too. Define unfamiliar entities at the point of use; keep facts and conditions together
 - the client's measured voice, written as the page's expert author (RULES section 2): facts in your own words with the source linked, a recommendation for each decision the reader faces, and the client's relevant pages linked where they are the natural next step
 - Markdown only (headings, paragraphs, lists, tables); no HTML
 
@@ -144,6 +150,8 @@ Read `docs/EVAL_RUBRIC.md` and read `final.md` once as a hostile senior editor w
 - every topic the top pages share that the page leaves out (pack topics, review §4), and every place where a reader would want your recommendation and gets a summary of sources
 
 Then fix `draft.md` in place for each item (cut, rewrite, or add a verified fact), then run `next`, which validates again. One pass only: the goal is the defects a reader would notice, not new content for its own sake.
+
+The editor also writes a `## Coverage` section: every required article-context id with its final-page heading/body/table/FAQ placement or a specific evidence/relevance exclusion. Check that the main task and necessary decision conditions precede background. `done editor` rejects missing required ids.
 
 ## 7c. Fact-check (its own role, after the editor's pass)
 

@@ -9,6 +9,10 @@ You did not write this page and you owe the writer nothing. A publisher will pay
 
 Inputs: `runs/<run>/final.md` (the page), `runs/<run>/verify_sheet.md` (every sentence that may state a fact, numbered C1..Cn, with its links and the closest verified fact, whose value is copied word for word from its source page). Do not read the dossier, the writer pack or the outline: judge the page as a reader with the sources open.
 
+The sheet names the page type, client and query. Keep that purpose while fixing facts. On a commercial page, correct the scope of the client's offer rather than replacing it with instructions to apply elsewhere. Retain material limits, costs, who decides and necessary official actions accurately. A direct-route disclosure can be necessary; do not repeat it throughout the page. An informational guide may legitimately explain the official workflow. Never invent a client capability to avoid sending the reader to an authority.
+
+Group claims by source URL and open each source once per checking pass; reuse the passage you read for other claims on that page, while comparing each claim's condition independently. Batch any newly verified facts with `--add-facts`; a verified value on the sheet is a lead, not permission to skip a questionable attribution.
+
 ## For each sentence C1..Cn
 
 1. **Is it a fact?** A fact is anything a reader could check: a number, date, rule, limit, cause and effect, what a product or body does or says, who something applies to. Advice addressed to the reader ("pick the sunniest spot"), the brand's stated recommendation ("we'd plant in late October"), arithmetic shown from facts in the same paragraph, and a pointer to another page are ADVICE. A recommendation that smuggles in a fact ("wait for the soil to cool, because cool soil slows disease") is a fact.

@@ -137,9 +137,9 @@ def _sheet(rd: Path, r: dict) -> None:
           "## Scores (reviewer fills; every deduction quotes the line)", "",
           "| # | Criterion | Max | Score | Evidence for deductions |", "|---|---|---:|---:|---|"]
     for i, (name, mx) in enumerate([("Intent and SERP fit", 10), ("Coverage and responsiveness", 15),
-                                     ("Accuracy and sourcing", 15), ("Information gain", 10), ("Humanization", 20),
+                                     ("Accuracy and sourcing", 15), ("Information gain", 10), ("Humanization", 15),
                                      ("Language quality", 10), ("Structure and on-page SEO", 10),
-                                     ("Brand and conversion", 5), ("Trust and E-E-A-T signals", 5)], 1):
+                                     ("Page job: brand and conversion", 10), ("Trust and E-E-A-T signals", 5)], 1):
         L.append(f"| {i} | {name} | {mx} |  |  |")
     L += ["", "**Total:** /100"]
     out = rd / "eval.md"

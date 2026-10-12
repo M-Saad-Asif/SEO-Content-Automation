@@ -212,15 +212,24 @@ def run(ctx):
     fetched = C.run_async(C.fetch_many([{"url": u, "kind": "official", "parse": "doc"} for u in need],
                                        ctx.refresh, timeout=8, attempts=1)) if need else {}
     from seolib import spider
-    retry = [u for u in need if not (fetched.get(u) or {}).get("blocks") and not u.lower().split("?")[0].endswith(".pdf")]
+    # Render a thin successful HTML response, not a refusal, missing page or network failure.
+    retry = [u for u in need if (fetched.get(u) or {}).get("status") == 200
+             and ((fetched.get(u) or {}).get("state") == "needs_js" or not (fetched.get(u) or {}).get("blocks"))
+             and not u.lower().split("?")[0].endswith(".pdf")]
     if retry and spider.api_key():
-        fetched.update({u: r for u, r in spider.scrape_many(retry).items() if r.get("state") == "ok"})
+        rendered = spider.scrape_many(retry, concurrency=7, timeout_s=20, attempts=1, refresh=ctx.refresh)
+        for u, r in rendered.items():
+            if r.get("state") == "ok":
+                fetched[u] = r
+            else:
+                fetched[u]["render_error"] = r.get("error") or r.get("state")
     facts, sources, blocked = [], [], []
     for u in cands:
         page = known.get(u) or fetched.get(u) or {}
         blocks = page.get("blocks") or []
         if not blocks:
-            blocked.append({"url": u, "state": page.get("state"), "status": page.get("status")})
+            blocked.append({"url": u, "state": page.get("state"), "status": page.get("status"),
+                            "render_error": page.get("render_error")})
             continue
         if "comment-page" in u or "#comment" in u or re.search(r"/(viewer|proxy|mirror|cache)/", u):
             continue

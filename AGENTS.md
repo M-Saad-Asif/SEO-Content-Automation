@@ -7,8 +7,8 @@ When the user types `/page-seo …`, `$page-seo …`, `page-seo …`, or asks fo
 The request is what the user typed: a page address (the page is read first: its type and main keyword come from it), or a keyword, usually with the client (a name or a domain) and optional instructions, e.g. `nutmeg: what is a lifetime isa | for first-time buyers, plain English`. A brief path (`briefs/<page>.yaml`) works too.
 
 1. Run `python scripts/seo.py start "<the request, exactly as typed>"` (from any other folder: `python "<this folder>/scripts/seo.py" …`).
-   - If it prints `NEED A CLIENT` or `NEED A KEYWORD`, ask the user that one question and run `start` again with the answer added. That is the only question you may ask.
-   - Otherwise it prints `BRIEF briefs/<page>.yaml` and the first task. Use that brief in every later command.
+   - If it prints `NEED A CLIENT`, `NEED A KEYWORD` or `NEED A PAGE`, ask the missing-context question and run `start` again with the answer added. Reuse known website context; do not ask for it again.
+   - Otherwise follow the printed task and brief. For a batch, use the brief in each new task's commands as the driver advances pages.
 2. If the output contains `NEXT TASK`, do exactly that task and nothing more, then run exactly the command(s) printed at its end: `done <brief> <step>` only when the task prints it, then `python scripts/seo.py next <brief>`.
 3. If it prints `DONE` or `STOPPED`, reply exactly as it says and stop.
 4. If a command fails (error, traceback, missing package or key), run `python scripts/seo.py doctor`, apply the `fix:` line it prints once, and run `next` again. If it still fails, stop and show the error.
@@ -31,10 +31,12 @@ E-E-A-T inputs only a person can give go in the client profile: `author:` (a rea
 
 ## New client or brief (operator, before a run)
 
+- `python scripts/seo.py site <website>` reads/discovers the website and saves reusable `seo-context.yaml` plus its inventory; no article run. Repeat to resume a capped discovery.
+- Add `--keywords <file>`, `--pages <file>` or `--all-pages` to prepare a resumable queue; `python scripts/seo.py batch <plan>` starts/resumes writing. Through adapters use `<website> | keywords: <file or semicolon list>` or `<website> | pages: <file or URL list>`.
 - `python scripts/seo.py client <slug> <domain>` builds `clients/<slug>.yaml` from the live site.
 - `python scripts/seo.py brief <client> "<query>"` writes `briefs/<slug>.yaml` (`start` does this for you).
 
 ## Repo notes for code changes (not for writing runs)
 
 - Python 3.10+; `python install.py` sets everything up (packages, spaCy model, keys in the git-ignored `.env`: `SERPER_API_KEY`, `SPIDER_API_KEY`; adapters). Edit the `/page-seo` contract only in `scripts/install_adapters.py`, then run `python install.py` again.
-- `python scripts/seo.py doctor` checks the setup; `python scripts/seo.py test` runs the regression fixtures; keep both passing.
+- `python scripts/seo.py doctor` checks the setup. `python scripts/seo.py test --offline` runs synthetic pipeline regressions without content runs, API calls or paid credits. `python scripts/seo.py test` runs the full fixture preparation and may fetch sources/create runs; use only when that scope is authorized.

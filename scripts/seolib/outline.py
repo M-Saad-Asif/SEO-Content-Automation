@@ -44,6 +44,9 @@ def check_outline(rd: Path) -> bool:
         if m:
             heads.append((len(m.group(1)), re.sub(r"[*_`]", "", m.group(2)).strip()))
     sheet = C.load_json(rd / "fact_sheet.json")
+    from .pagejob import COMMERCIAL
+    commercial = sheet["brief"].get("page_type") in COMMERCIAL
+    outline_text = p.read_text(encoding="utf-8")
     if (rd / "research").exists():  # lint reads the deliberate skips from here
         C.save_json(rd / "research" / "outline.json", {"skips": [{"question": s, "reason": r} for s, r in skips]})
     qmap = C.load_json(rd / "research" / "query_map.json") or {}
@@ -63,8 +66,9 @@ def check_outline(rd: Path) -> bool:
         if l > prev + 1:
             add("B", f"skipped heading level before \"{h}\"")
         prev = l
-        if l >= 2 and re.fullmatch(CONTEXTLESS, h.lower().strip(" :?")):
-            add("B", f"contextless heading \"{h}\": name the question it answers (PAA belong in regular H2s, not an FAQ block)")
+        if l >= 2 and re.fullmatch(CONTEXTLESS, h.lower().strip(" :?")) and not (
+                commercial and re.fullmatch(r"faqs?|frequently asked questions", h.lower().strip(" :?"))):
+            add("B", f"contextless heading \"{h}\": name the subject it covers; place questions according to the Page job")
         ws = re.findall(r"[A-Za-z][\w'’-]*", h)[1:]
         from .nlp import places as _pl
         geo = {w for i in range(len(ws)) for span in (ws[i:i + 1], ws[i:i + 2])
@@ -86,15 +90,17 @@ def check_outline(rd: Path) -> bool:
     if yous and mes:
         add("w", f"headings switch between \"you\" and \"I\" (e.g. \"{mes[0]}\"); keep one person")
     for q in qmap.get("h2_questions", []):
-        c = cover(q, sub)
+        c = cover(q, sub + outline_text.splitlines())
         sk = next((r for s, r in skips if cover(q, [s]) >= 0.8), None)
         if c < 0.6 and sk:
             add("w", f"PAA question skipped on purpose: \"{q}\" ({sk})")
         elif c < 0.6:
-            add("B", f"PAA question not answered by any heading: \"{q}\" (or add 'Skip: <question> — <reason>')")
+            add("B", f"PAA question not placed in the outline: \"{q}\" (use a heading, a body/table/FAQ coverage note, or 'Skip: <question> — <reason>')")
+    if commercial and not re.search(r"(?im)^\s*Page job:\s*\S.+", outline_text):
+        add("B", "commercial outline needs a Page job: line identifying the type, scoped offer fact ids and verified next step (or next step not verified)")
     for r in qmap.get("queries", []):
         if r["decision"] == "separate_page" and cover(r["query"], sub) >= 0.85:
-            add("B", f"\"{r['query']}\" belongs on a separate page; drop its heading (mention it at most)")
+            add("w", f"\"{r['query']}\" was routed to a separate page; verify against the main task and document the coverage decision before removing relevant detail")
         if r["decision"] == "existing_page" and cover(r["query"], sub) >= 0.85 and sheet["brief"].get("page_type") == "hub":
             add("w", f"\"{r['query']}\" has its own page ({r.get('url')}); link it instead of a full section")
     topics = kg.get("heading_topics", [])[:10]
@@ -106,7 +112,7 @@ def check_outline(rd: Path) -> bool:
             add("w", f"outline covers {len(hit)}/{len(topics)} topics the top pages share; consider: " + "; ".join(missing))
         # a topic most of the top pages cover is what the reader expects: cover it, or say why not
         n_pages = len((C.load_json(rd / "research" / "competitor_scrape.json") or {}).get("pages", [])) or 1
-        whole = sub + h1 + [s for s, _ in skips]
+        whole = sub + h1 + outline_text.splitlines() + [s for s, _ in skips]
         for tp in topics:
             if tp["domains"] >= max(3, 0.4 * n_pages) and tp not in hit and not any(
                     cover(e, whole) >= 0.5 for e in [tp["topic"]] + tp["examples"]):
@@ -116,6 +122,18 @@ def check_outline(rd: Path) -> bool:
                     continue
                 add("B", f"\"{tp['topic']}\" is covered by {tp['domains']} of {n_pages} top pages but not by this outline "
                          "(add a section, or a `Skip: <topic> — <reason>` line)")
+    context = C.load_json(rd / "article_context.json") or {}
+    resolutions = {}
+    for line in outline_text.splitlines():
+        match = re.match(r"^\s*(?:[-*]\s*)?(Coverage|Exclude):\s*((?:S\d+|Q\d+)(?:\s*,\s*(?:S\d+|Q\d+))*)\s+[—–-]\s+(.{8,})$", line, re.I)
+        if match:
+            for cid in re.split(r"\s*,\s*", match[2].upper()):
+                resolutions[cid] = {"decision": match[1].lower(), "placement_or_reason": match[3]}
+    for item in context.get("coverage_requirements", []):
+        if item.get("required") and item["id"] not in resolutions:
+            add("B", f"coverage {item['id']} ({item['text']}) needs 'Coverage: {item['id']} — <heading/body/table/FAQ placement>' or 'Exclude: {item['id']} — <specific reason>'")
+    if context:
+        C.save_json(rd / "research" / "coverage_plan.json", {"input_digest": context.get("input_digest"), "items": resolutions})
     for sev, msg in F:
         print(f"{sev} {msg}")
     ok = not any(s == "B" for s, _ in F)

@@ -5,9 +5,9 @@ description: Read the pages ranking in Google's top 10 for a keyword. Their outl
 
 # Competitor scrape: what the ranking pages actually say
 
-**Script:** `run.py`. It fetches every eligible result in parallel and keeps the first N readable ones in ranking order (10 in deep mode, 5 in quick).
+**Script:** `run.py`. It sends eligible top-ten organic result URLs to Spider in deep mode (five in quick), plus up to four PAA source URLs and two related-search source URLs in the same bounded wave (quick: two PAA, no related sources). All question/query text remains available even when a supplement exceeds the budget. Unavailable rendering falls back to one direct HTTP attempt; refresh propagates to both paths.
 
-**Output:** `research/competitor_scrape.json`, containing `pages` (url, domain, position, kind, title, outline, words, tables, blocks), `skipped` (with reasons) and `median_words`.
+**Output:** `research/competitor_scrape.json`, containing `pages` (url, domain, position, kind, title, outline, words, tables, blocks), `skipped` (with reasons) `median_words`, and `acquisition` (requested URLs, mode and supplement budget). Read pages carry final_url, via and source_role. Not every SERP result is guaranteed readable; all omissions are explicit in article_context.json.
 
 ## What is taken
 - Headings H1–H4 in order: the outline.

@@ -37,7 +37,7 @@ Only main-content paragraphs of 12+ words count. Navigation, footers and forms a
 | Multi-author blog with mixed styles | Profile the homepage and service pages. Note the mix |
 | New site with no content | Defaults, plus the brief's `notes` field if the operator described the tone |
 
-**Never:** invent a brand persona, borrow a competitor's voice, or treat profile samples as facts about the client's services. Services come only from approved claims.
+**Never:** invent a brand persona, borrow a competitor's voice, or treat voice samples as facts about the client's services. Services come only from scoped client-page facts (including `offer:N`) and approved claims; a voice sample alone establishes no capability.
 
 ## Run it alone
 `python scripts/seo.py research <brief> --mode quick`, then read `research/site_profile.json` or the "client's voice" section of the pack.

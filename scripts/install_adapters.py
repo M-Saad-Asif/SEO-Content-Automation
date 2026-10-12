@@ -26,7 +26,7 @@ HOME = Path.home()
 # a friend's machine (macOS has only python3; a virtual environment has its own)
 PY = Path(sys.executable).as_posix() if sys.executable else "python"
 SEO = f'"{PY}" "{(ROOT / "scripts" / "seo.py").as_posix()}"'
-DESC = ("Write one SEO page with the ASDivigitals pipeline from a keyword (and a client and instructions), "
+DESC = ("Write SEO pages with the ASDivigitals pipeline from keywords, domains, page URLs or a website keyword list, "
         "step by step, exactly as the program prints it.")
 
 
@@ -36,11 +36,11 @@ def body(args: str) -> str:
 
 The pipeline lives in `{ROOT.as_posix()}`. The commands below work from any folder.
 
-The request is {args}: a keyword, usually with the client (a name or a domain) and optional instructions, for example `nutmeg: what is a lifetime isa | for first-time buyers, plain English`.
+The request is {args}: a keyword with optional client/instructions, a domain or a page URL. Page URLs are read for type and main query. A configured website context (seo-context.yaml) or a single saved client is reused; ask for the website only when none is unambiguous. A website list works as `example.com | keywords: keywords.csv` or `example.com | pages: pages.txt` (semicolon-separated values also work). The program discovers the website, prepares a resumable queue and prints one page task at a time.
 
 1. Run `{SEO} start "<the request, exactly as typed>"`.
-   - If it prints `NEED A CLIENT` or `NEED A KEYWORD`, ask the user that one question, then run `start` again with their answer added. That is the only question you may ever ask.
-   - Otherwise it prints `BRIEF briefs/<page>.yaml` and the first task. Use that brief path in every later command.
+   - If it prints `NEED A CLIENT`, `NEED A KEYWORD` or `NEED A PAGE`, ask the missing-context question and run `start` again with their answer added.
+   - Otherwise follow the printed task and brief path. In a batch, the next page may have a different brief; use the path in that task's commands. Website discovery does not claim unread pages were read.
 2. If the output contains `NEXT TASK`, do exactly that task and nothing more, then run exactly the command(s) printed at its end: `done <brief> <step>` only when the task prints it, then `{SEO} next <brief>`.
 3. If it prints `DONE` or `STOPPED`, reply exactly as it says and stop.
 4. If a command fails (error, traceback, missing package or key), run `{SEO} doctor`, apply the `fix:` line it prints once, and run `next` again. If it still fails, stop and show the error.

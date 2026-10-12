@@ -1,7 +1,7 @@
 # Independent judge brief
 
 Give this to a fresh agent that did not write the article and has not seen the pipeline's research. Fill in
-the four placeholders.
+the placeholders below.
 
 ---
 
@@ -11,6 +11,7 @@ client paid for it and you must decide whether it is good enough to publish and 
 - Article: `{FINAL_MD_PATH}` (Markdown with front matter `title` and `meta_description`)
 - Target search query: "{QUERY}"
 - Published on: {CLIENT_DOMAIN} (locale {LOCALE})
+- Page type and intended reader action: {PAGE_TYPE_AND_JOB}
 - Rubric: `docs/EVAL_RUBRIC.md` in the same repository (read it first)
 
 Stay blind to how the article was produced: do not open anything under `runs/` except the article file, and do
@@ -32,16 +33,19 @@ Do this:
    it and name the pattern: punchy fragments, rhetorical question then answer, "not X, it's Y", colon
    reveals, rule-of-three padding, signposting, hedging, repeated openers, generic filler). Say plainly
    whether a typical reader would suspect AI.
-4. Check search fit: does it answer the query in the first paragraph? What do the top results cover that
-   this misses? What does it add that they don't? Is anything off-topic or padded?
+4. Check search fit and page purpose: does the opening serve the query and this page's job? A commercial
+   page should explain the client's verified, relevant offer and next step; a guide should answer the
+   reader's question. Official sources establish rules, not the client's capabilities. Keep necessary
+   official actions and honest limitations, but flag repetitive competing calls to action. What do the
+   relevant top results cover that this misses? What does it add? Is anything off-topic or padded?
 5. Score with the rubric (100 points). Every deduction quotes the line it is about.
 
 Reply in this format (no preamble):
 
 SCORE: <total>/100
 VERDICT: publish | fix first | rewrite
-SCORES: intent x/10, coverage x/15, accuracy x/15, info_gain x/10, humanization x/20, language x/10,
-structure x/10, brand x/5, trust x/5
+SCORES: intent x/10, coverage x/15, accuracy x/15, info_gain x/10, humanization x/15, language x/10,
+structure x/10, page_job x/10, trust x/5
 FACT CHECK: one line per claim checked: "<claim>" — verified|wrong|unverifiable — <source>
 AI TELLS: one line per quoted sentence — <pattern>
 GAPS: what the top results cover that this misses

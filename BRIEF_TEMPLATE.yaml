@@ -6,7 +6,9 @@ client_aliases: [Velorien]          # other names the copy might use for the cli
 domain: houseofvelorien.com
 locale: en-GB                       # drives the spelling lint (en-GB or en-US)
 page_url: https://houseofvelorien.com/blogs/guides/work-travel-bags   # live page: its H1/title are fetched; 404 = new page
-page_type: guide                    # guide | hub | spoke | product-guide | service
+page_type: guide                    # guide | hub | spoke | product-guide | service | location | product | category | home | company
+# page_type_source: explicit        # explicit choices win over live-page and SERP inference
+# conversion_targets: [https://example.com/start]  # verified CTA destinations, including a hosted booking portal if needed
 target_query: best bags for work and travel uk
 search_intent: commercial-investigation
 word_range: [900, 1400]

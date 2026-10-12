@@ -400,8 +400,84 @@ class Linter:
             elif b["type"].startswith("h") and include_headings:
                 yield b, b["text"]
 
+    def r_page_job(self):
+        """Commercial pages explain the scoped client offer and next step. Keep official obligations and
+        limitations; flag duplicated competing CTAs. Informational pages have no sales quota."""
+        from .pagejob import ANTI, COMMERCIAL, STEER, brand_terms, is_client_url, next_steps, offer
+        pt = self.b.get("page_type") or "guide"
+        commercial = pt in COMMERCIAL
+        if not commercial:
+            return
+        sev = "block" if commercial else "warn"
+        brands = brand_terms(self.sheet)
+        # the brand is present by name, or in its own voice ("our rate table", "we arrange") on its own page
+        brx = re.compile(r"(?i)\b(" + "|".join(re.escape(x) for x in brands) + r")\b|\b(we|we'll|we've|our|ours)\b") \
+            if brands else None
+        body = [b for b in self.blocks if b["type"] in ("p", "li", "tr")]
+        paras = [b for b in self.blocks if b["type"] == "p"]
+        if commercial and brx and paras and not any(brx.search(b["text"]) for b in paras[:2]):
+            self.add("P01-brand-late", sev if pt in ("service", "location", "product") else "warn", paras[0],
+                     paras[0]["text"][:120], f"a {pt} page that doesn't name {brands[0]} in its first two paragraphs: "
+                     "the reader can't tell whose offer this is", f"say what {brands[0]} does about this need in the "
+                                                                 "opening, with its main next step")
+        links = [(b, u) for b in body for _, u in re.findall(r"\[([^\]]+)\]\((https?://[^)\s]+)\)", b.get("raw", ""))]
+        own = [(b, u) for b, u in links if is_client_url(u, self.sheet)]
+        deep_own = next_steps(body, self.sheet)
+        if commercial and not deep_own:
+            known = bool(offer(self.sheet).get("ctas") or self.b.get("conversion_targets"))
+            self.add("P02-no-client-next-step", sev if known else "warn", None, f"{len(own)} internal link(s)",
+                     "the page has no identifiable client action; a general blog link is not a conversion step",
+                     "use a relevant verified CTA, contact or browse target from Page job; verify a missing target before adding it")
+        elif commercial and body and deep_own:
+            last = body[int(len(body) * 0.7):]
+            if not any(b in last for b, _ in deep_own):
+                self.add("P02-no-closing-step", "warn", body[-1], body[-1]["text"][:100],
+                         "the page ends without the client's next step", "close with a link to the client's next step")
+        steer = {}
+        for b, s in self.prose():
+            external = [(a, u) for a, u in re.findall(r"\[([^\]]+)\]\((https?://[^)\s]+)\)", b.get("raw", ""))
+                        if not is_client_url(u, self.sheet)]
+            named = {C.host(u) for a, u in external if a.lower() in s.lower() or C.host(u).lower() in s.lower()}
+            imperative = re.search(r"(?i)^(apply|pay|book|submit|order|buy|renew|register)\b|"
+                                   r"\b(you (can|should)|we recommend|remember (that |to )?)\b", s)
+            obligation = re.search(r"(?i)\b(must|required|statutory|mandatory|need to|only you|personally|"
+                                   r"biometrics?|identity check|identity verification)\b", s)
+            if STEER.search(s) and named and imperative and not obligation:
+                for destination in named:
+                    steer.setdefault(destination, []).append((b, s))
+        for destination, repeated in steer.items():
+            for b, s in repeated[1:]:
+                self.add("P03-steers-elsewhere", sev, b, s, f"repeated directions to act at {destination} "
+                         f"({len(repeated)} sentences) can displace the client's offer on a {pt} page",
+                         "consolidate duplicated competing CTAs; preserve distinct official obligations, limitations "
+                         "and the verified direct-route disclosure")
+        # whose page is it? On a commercial page one outside site named sentence after sentence, against a client
+        # named once or twice, makes the page that site's guide (the visa page that was a GOV.UK manual)
+        if commercial and brx and brands:
+            from collections import Counter
+            from urllib.parse import urlparse
+            from .pagejob import external_names
+            ext = Counter(urlparse(u).netloc.lower().removeprefix("www.") for _, u in links
+                          if not is_client_url(u, self.sheet))
+            sents = [s for _, s in self.prose()]
+            mine = sum(1 for s in sents if brx.search(s))
+            for d, _n in ext.most_common(2):
+                rx = re.compile(r"(?i)(?<![\w.])(" + "|".join(re.escape(x) for x in external_names(d)) + r")(?![\w])")
+                theirs = sum(1 for s in sents if rx.search(s))
+                if theirs >= 6 and theirs > 2 * max(1, mine):
+                    self.add("P05-another-sites-page", "warn", None, f"{d}: {theirs} sentences; {brands[0]}: {mine}",
+                             f"the page is centred on {d} ({theirs} sentences) rather than on {brands[0]} ({mine}): it "
+                             "reads as a guide to that site, not the client's page",
+                             f"cite {d} where a rule or figure needs it; build the sections around what {brands[0]} "
+                             "does (writer pack: Page job)")
+        for b, s in self.prose(include_headings=True):
+            if ANTI.search(s):
+                self.add("P04-warns-off-client", "warn", b, s, "check whether this is a necessary limitation or an "
+                         "unhelpful repeated warning against the client", "preserve the material fact and its scope; explain "
+                         "the verified service value nearby and consolidate duplicate disclosures")
+
     def run(self) -> list[dict]:
-        for fn in (self.r_length, self.r_snippet, self.r_openers, self.r_trailing_ing, self.r_vague,
+        for fn in (self.r_page_job, self.r_length, self.r_snippet, self.r_openers, self.r_trailing_ing, self.r_vague,
                    self.r_noun_stack, self.r_nominal, self.r_person, self.r_locale, self.r_times,
                    self.r_lexicon, self.r_tells, self.r_labels, self.r_signposts, self.r_bold_bullets, self.r_numbers,
                    self.r_links, self.r_tables, self.r_absolutes, self.r_client, self.r_codes,
@@ -855,10 +931,12 @@ class Linter:
                 self.add("U13-links-replaced-page", "block", None, u,
                          "links the client's existing page on this same query, which this page replaces",
                          "use its facts directly; the old page will be merged or redirected here")
+        from .pagejob import COMMERCIAL, next_steps, is_client_url
+        action_urls = {url for _, url in next_steps(self.blocks, self.sheet)} if self.b.get("page_type") in COMMERCIAL else set()
         for u, n in per_url.items():
             # an outside page may be linked again where another page of its publisher came in between (U18); beyond
             # two links, or any repeat of the client's own pages, it reads as link-stuffing
-            cap = 1 if dom0 and dom0.split(".")[0] in u else 2
+            cap = 2 if u.rstrip("/") in action_urls else 1 if is_client_url(u, self.sheet) else 2
             if n > cap and not any(p == u for (_, p), m in pairs.items() if m > 2):
                 # RULES: never one page more than twice (the client's own pages once each)
                 self.add("U07-url-linked-twice", "block" if n > 2 else "warn", None, u, f"linked {n} times",
@@ -1172,8 +1250,11 @@ class Linter:
             if b["type"] in ("h2", "h3", "h4") and re.fullmatch(
                     r"(introduction|overview|conclusion|final thoughts|about|miscellaneous|summary|wrap[- ]up|"
                     r"faqs?|frequently asked questions)", b["text"].lower().strip(" :?")):
+                from .pagejob import COMMERCIAL
+                if self.b.get("page_type") in COMMERCIAL and re.fullmatch(r"faqs?|frequently asked questions", b["text"], re.I):
+                    continue
                 self.add("K03-contextless-heading", "block", b, b["text"], "contextless heading",
-                         "name the question the section answers; PAA questions are regular H2s, not an FAQ block")
+                         "name the subject the section covers; place questions according to the Page job")
         # sentence-initial "If": declaration first
         for b, s in self.prose():
             m_if = re.match(r"^If\b([^,]*),", s)
@@ -1993,10 +2074,12 @@ class Linter:
         deep = (self.sheet.get("research") or {}).get("mode") == "deep"
         opening = [b["text"] for b in self.blocks if b["type"] == "h1"] + paras[:1]
         for q in qmap.get("h2_questions", []):
-            if cov(q, heads) < 0.6 and cov(q, [" ".join(opening)]) < 0.75 and not (skips and cov(q, skips) >= 0.8):
-                self.add("Q01-question-not-answered", "block" if deep else "warn", None, q,
-                         "a People Also Ask / question search has no heading that answers it",
-                         "add an H2 in the reader's words and answer it in the first 40–50 words")
+            from .pagejob import COMMERCIAL
+            covered = heads + paras
+            if cov(q, covered) < 0.6 and cov(q, [" ".join(opening)]) < 0.75 and not (skips and cov(q, skips) >= 0.8):
+                self.add("Q01-question-not-answered", "warn", None, q,
+                         "lexical coverage check did not locate an answer to this question",
+                         "check its coverage id; answer in a relevant section, table or FAQ, or explain the exclusion")
         # questions planned "inside a section" (PAA, related questions, competitors' shared questions) still need an
         # answer on the page: their own words, not just the topic, somewhere in the body
         units = [tk(t) for t in paras] + [tk(h) for h in heads]
@@ -2010,18 +2093,19 @@ class Linter:
             need = 1.0 if len(own) <= 2 else 0.67  # answered = its own words together in one paragraph or heading
             if not any(len(own & u) / len(own) >= need for u in units) and not (skips and cov(r["query"], skips) >= 0.8):
                 strong = str(r.get("source", "")).startswith(("paa", "top_page_headings", "gsc"))
-                self.add("Q03-planned-question-unanswered", "block" if deep and strong else "warn", None, r["query"],
+                self.add("Q03-planned-question-unanswered", "warn", None, r["query"],
                          "searchers ask this and the plan put it inside a section, but the page never answers it",
                          "answer it in a sentence or two in the closest section (or record a Skip line in the outline)")
         for r in qmap.get("queries", []):
             if r["decision"] == "drop" and str(r.get("reason", "")).startswith("never mentions the topic") \
                     and cov(r["query"], heads) >= 0.75:
-                self.add("Q04-off-topic-heading", "block", None, r["query"],
+                self.add("Q04-off-topic-heading", "warn", None, r["query"],
                          "this question drifted away from the topic (it never mentions it), yet it has a heading here",
-                         "remove the section")
+                         "check relevance and page purpose; retain relevant information with a documented coverage decision")
             if r["decision"] == "separate_page" and r.get("distinct_terms") and cov(r["query"], heads) >= 0.85:
-                self.add("Q02-belongs-elsewhere", "block", None, r["query"],
-                         "this query deserves its own page, but this article gives it a section", "drop the section; mention it in one line at most")
+                self.add("Q02-belongs-elsewhere", "warn", None, r["query"],
+                         "the automated query map suggested another page for this section",
+                         "check the source context and user task; document why it belongs here or link the existing page")
         gsc = self.research.get("gsc_insights") or {}
         for r in (gsc.get("striking") or [])[:12]:
             if cov(r["query"], heads + paras) < 0.75:

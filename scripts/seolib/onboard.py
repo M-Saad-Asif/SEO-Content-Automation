@@ -22,6 +22,7 @@ def _get(url: str, parse: str = "html") -> dict:
 def onboard(slug: str, domain: str, force: bool = False) -> Path:
     domain = re.sub(r"^https?://", "", domain).strip("/").removeprefix("www.")
     out = C.ROOT / "clients" / f"{slug}.yaml"
+    out.parent.mkdir(parents=True, exist_ok=True)
     if out.exists() and not force:
         raise SystemExit(f"{out} exists (use --force to overwrite)")
     home = _get(f"https://{domain}/", "raw") or {}

@@ -35,13 +35,33 @@ The agent then runs the pipeline step by step until it prints `DONE` with the pa
 
 ## Commands
 
+For repeated work on one website, save its context and discover its pages once:
+
+```bash
+python scripts/seo.py site example.com
+python scripts/seo.py site example.com --keywords keywords.csv
+python scripts/seo.py site example.com --pages pages.txt
+python scripts/seo.py site example.com --all-pages
+```
+
+`site` only reads the website and prepares briefs/queue; it does not research or write articles. It follows same-site sitemaps and content links, reads up to 250 pages per pass (change with `--max-pages`), and saves `sites/<client>/inventory.json`. Repeat it to resume a larger site; use `--refresh` to read it afresh. Thin successful HTML can be rendered with Spider. Robots exclusions, unavailable pages and unfinished frontiers are reported. A bounded crawl cannot promise every page on a website was found.
+
+The generated `seo-context.yaml` binds this project to that website. Keyword-only requests reuse it; a single saved client is also an implicit default. Multiple clients without a binding require a website. A domain alone means its homepage; a full page URL derives its page type and query from live content (H1/title/address). An explicit keyword remains the target when matching it to an existing page. Ambiguous existing-page matches require a page URL.
+
+Lists accept TXT (one keyword/URL per line), CSV (`keyword,url,page_type,instructions`), JSON or YAML lists. A keyword already matching one known page is a rewrite; a new keyword creates a brief with inferred type. Explicit page types win. Multiple keywords for the same URL share one page as secondary queries. `--all-pages` queues known content pages only and reports incomplete discovery. Prepared plans live in `batches/`; resume one with `python scripts/seo.py batch <printed-plan-path>`. The existing driver completes, validates and fact-checks each page before advancing the queue. These local files and client context are git-ignored.
+
+Through an installed agent adapter, use `/page-seo example.com | keywords: keywords.csv` or `/page-seo example.com | pages: https://example.com/services/help; https://example.com/blog/guide`. To prepare and start directly from the CLI: `python scripts/seo.py start --site example.com --keywords keywords.csv`. Re-run the installer after pulling updates to refresh installed adapters.
+
+Writers now use `article_context.json`: page purpose, website catalog, scoped facts, entities/attributes/values, semantic triplets, relationships, definitions, all search demand, evidence references, section priorities and coverage ids. This replaces repeated Markdown graph/outline exports by default; there was never a graph database to remove. Raw source blocks remain indexed in `research/competitor_scrape.json` without duplicating them into the writer's context. The extractor caches identical inputs and reports limits; neither exhaustive knowledge nor ranking guarantees are claimed. Legacy Markdown exports are available only with `research_format: markdown` in a brief.
+
 ```bash
 python install.py --keys                                            # change the API keys
 python install.py                                                   # again after moving the folder or pulling updates
 python scripts/seo.py doctor                                        # setup check (Python, packages, keys, plugins)
 python scripts/seo.py start "<client>: <keyword> | <instructions>"  # the same run, from a terminal
 python scripts/seo.py client <slug> <domain>                        # a client profile ahead of time (start does this for a new domain)
-python scripts/seo.py test                                          # regression fixtures
+python scripts/seo.py test --offline                                # synthetic regressions, no API calls/content runs
+python scripts/seo.py test                                          # full fixture preparation; fetches sources/creates runs
 ```
 
 Your briefs, client profiles, runs and cache stay on your machine (`briefs/`, `clients/`, `runs/`, `cache/` are git-ignored).

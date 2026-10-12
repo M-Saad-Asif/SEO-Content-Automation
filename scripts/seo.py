@@ -16,6 +16,7 @@ Lower-level commands (the driver calls these; agents only use them when a printe
   python scripts/seo.py ingest   <run-dir> <plugin> <file.json>   # MCP route: store raw connector data, re-run downstream
   python scripts/seo.py prep     <brief.yaml> [--refresh]  # foundation only (site, products, official facts)
   python scripts/seo.py prep     <brief.yaml> --add-fact ID "claim" "value" URL [--source-text-file F] [--scope "who/when"]
+  python scripts/seo.py prep     <brief.yaml> --add-facts facts.yaml   # many facts in one call (list of id, claim, value, url, scope)
   python scripts/seo.py capture  <url> <text-file>        # page text you read with your own browser
   python scripts/seo.py lint     <run-dir|brief.yaml> [--file other.md] [--json]
   python scripts/seo.py review   <run-dir>                 # editor's pass: each claim next to its fact, section shapes, gaps
@@ -46,6 +47,7 @@ def main(argv=None) -> int:
     p.add_argument("brief")
     p.add_argument("--refresh", action="store_true", help="ignore the cache")
     p.add_argument("--add-fact", nargs=4, metavar=("ID", "CLAIM", "VALUE", "URL"))
+    p.add_argument("--add-facts", metavar="FILE", help="many facts at once: a YAML/JSON list of {id, claim, value, url, scope}")
     p.add_argument("--source-text-file", help="page text you captured when the source blocks scripts")
     p.add_argument("--scope", help="who/what/when the fact applies to (a group, product, country, tax year, version)")
     p = sub.add_parser("research")
@@ -63,7 +65,7 @@ def main(argv=None) -> int:
     p.add_argument("client")
     p.add_argument("query")
     p.add_argument("--url")
-    p.add_argument("--type", default="guide", choices=["guide", "hub", "spoke", "product-guide", "service",
+    p.add_argument("--type", default=None, choices=["guide", "hub", "spoke", "product-guide", "service",
                                                         "location", "product", "category", "home", "company"])
     p.add_argument("--words", nargs=2, type=int)
     p.add_argument("--task", default="new", choices=["new", "rewrite"])
@@ -95,8 +97,25 @@ def main(argv=None) -> int:
     p.add_argument("run")
     p = sub.add_parser("test")
     p.add_argument("name", nargs="?")
+    p.add_argument("--offline", action="store_true", help="unit regressions only; no network, client runs or paid APIs")
     p = sub.add_parser("start")
-    p.add_argument("request", nargs="+", help="a brief, or: <client>: <keyword> | <instructions>")
+    p.add_argument("request", nargs="*", help="a brief, URL/domain, keyword, or: <website> | keywords: <file>")
+    p.add_argument("--mode", choices=["deep", "quick"])
+    p.add_argument("--site", help="website domain or saved client slug")
+    p.add_argument("--keywords", help="CSV, YAML, JSON or one-keyword-per-line file")
+    p.add_argument("--pages", help="selected page URLs in a list file")
+    p.add_argument("--all-pages", action="store_true")
+    p.add_argument("--max-pages", type=int, default=250)
+    p = sub.add_parser("site", help="read a website, save reusable context and optionally prepare a page queue")
+    p.add_argument("website", nargs="?")
+    p.add_argument("--keywords")
+    p.add_argument("--pages")
+    p.add_argument("--all-pages", action="store_true")
+    p.add_argument("--max-pages", type=int, default=250)
+    p.add_argument("--refresh", action="store_true")
+    p.add_argument("--no-default", action="store_true", help="do not bind this project to the website")
+    p = sub.add_parser("batch", help="resume a prepared website page queue")
+    p.add_argument("plan")
     p.add_argument("--mode", choices=["deep", "quick"])
     p = sub.add_parser("next")
     p.add_argument("brief")
@@ -114,8 +133,21 @@ def main(argv=None) -> int:
         return 0 if read_page(a.url) else 1
 
     if a.cmd == "start":
+        if a.keywords or a.pages or a.all_pages:
+            from seolib.batch import setup
+            setup(a.site, keywords=a.keywords, pages=a.pages, all_pages=a.all_pages, max_pages=a.max_pages, run=True, mode=a.mode)
+            return 0
         from seolib.driver import start
-        start(" ".join(a.request), a.mode)
+        start((a.site + ": " if a.site else "") + " ".join(a.request), a.mode)
+        return 0
+    if a.cmd == "site":
+        from seolib.batch import setup
+        setup(a.website, keywords=a.keywords, pages=a.pages, all_pages=a.all_pages, max_pages=a.max_pages,
+              refresh=a.refresh, bind=not a.no_default)
+        return 0
+    if a.cmd == "batch":
+        from seolib.batch import next_page
+        next_page(a.plan, a.mode)
         return 0
     if a.cmd == "next":
         from seolib.driver import next_step
@@ -131,6 +163,14 @@ def main(argv=None) -> int:
 
     if a.cmd == "prep":
         from seolib.prep import prep, add_fact
+        if a.add_facts:
+            from seolib.prep import add_facts
+            try:
+                out = add_facts(a.brief, a.add_facts)
+            except ValueError as e:
+                print(f"FACTS INVALID: {e}")
+                return 1
+            return 0 if out and all(f["status"] in ("verified", "captured", "operator") for f in out) else 1
         if a.add_fact:
             f = add_fact(a.brief, *a.add_fact, source_text_file=a.source_text_file, scope=a.scope)
             return 0 if f["status"] in ("verified", "captured", "operator") else 1
@@ -234,10 +274,18 @@ def main(argv=None) -> int:
         print((rd / "report.md").read_text(encoding="utf-8"))
         return 0
     if a.cmd == "test":
+        if a.offline:
+            import unittest
+            suite = unittest.defaultTestLoader.discover(str(C.ROOT / "tests"), pattern="test_*.py")
+            return 0 if unittest.TextTestRunner(verbosity=2).run(suite).wasSuccessful() else 1
         from seolib.fixtures import run_fixtures
         return 0 if run_fixtures(a.name) else 1
     return 2
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except (ValueError, FileNotFoundError) as error:
+        print(f"INPUT ERROR: {error}")
+        sys.exit(2)

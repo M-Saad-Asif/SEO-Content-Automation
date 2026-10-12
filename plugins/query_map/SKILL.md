@@ -23,7 +23,7 @@ Near-duplicates (80%+ token overlap) are merged, keeping the higher-priority sou
 
 | Decision | When | What the writer does |
 |---|---|---|
-| `h2` | A PAA or question query (or a GSC question the page shows for), up to 8 in deep mode or 5 in quick | Its own H2 in the reader's words, answered in the first 40–50 words |
+| `h2` | A PAA or question query (or a GSC question the page shows for), up to 8 in deep mode or 5 in quick | High-priority coverage: a guide may use its own question heading; a commercial page may answer in an offer/process section or FAQ H3. The legacy `h2` label does not override the Page job |
 | `cover_in_section` | Same intent as the main query (no distinct terms), a GSC non-question, 3+ shared top-10 URLs with the main query, PAA over the cap, or a question restating the main query | Use its words naturally inside the closest section |
 | `existing_page` | Its distinct terms match a client page (child page, collection, guide), or another client page outranks this one for it in GSC | Link that page with a descriptive anchor; no section |
 | `separate_page` | Fewer than 3 shared top-10 URLs (deep: SERP overlap check), or 2+ distinct terms (quick heuristic), or a question carrying a separate page's distinctive terms | No section. At most a one-line mention. Logged as a content-gap opportunity |
@@ -45,11 +45,11 @@ When two queries share 3 or more of the same top-10 URLs, Google treats them as 
 | Question about an error message ("your search did not return any data") | Usually a separate troubleshooting page |
 | Brand or competitor names in queries | Separate or drop. Never write about a competitor's service |
 | Off-topic autocomplete noise | `drop` (or harmless `cover_in_section` in quick mode; the writer ignores it) |
-| Too many PAA (over the cap) | Keep the most specific and highest-volume ones as H2s; fold the rest |
+| Too many PAA (over the cap) | Keep the most specific and highest-volume ones as priority coverage; fold close variants into the same section |
 | All candidates restate the main query | The page answers them as a whole. Use the SERP's expected topics for H2s instead |
 | GSC shows the page ranking for an off-intent query | Don't chase it if it conflicts with the brief's intent. Log it |
 
 ## Agent review
-The writer may phrase H2s naturally ("How do you check a UK visa application?" for "how to check uk visa application status"). The writer must not:
+The writer may phrase questions naturally ("How do you check a UK visa application?" for "how to check uk visa application status") and place them according to the Page job. Commercial coverage notes or FAQ H3s satisfy an `h2` item; they need not become main headings. The writer must not:
 - turn `separate_page` items into sections
 - ignore `h2` items, which lint Q01 blocks in deep mode

@@ -284,9 +284,11 @@ def build(pages: list[dict], query: str, locale: str, searches: list[str] | None
     # 1. sentences in this market, with the section they sit in
     sents = []  # (domain, heading, sentence, block type)
     heads_by_dom = defaultdict(list)
-    dropped_foreign, foreign_pages = 0, []
+    dropped_foreign, foreign_pages, source_processing = 0, [], []
     for p in pages:
         dom, h, budget = p["domain"], "", MAX_WORDS_PER_PAGE
+        start_sentence = len(sents)
+        budget_omissions = 0
         # a page written for another market (a US lender ranking in a UK search): its amounts, rules and terms are
         # that market's, so it adds nothing true to this market's graph
         body = " ".join(x for t, x in p.get("blocks", []) if t not in ("h1", "h2", "h3", "h4"))
@@ -299,13 +301,14 @@ def build(pages: list[dict], query: str, locale: str, searches: list[str] | None
         if strict_market and (home_cur and (other >= 3 and other > 2 * cur.get(home_cur, 0)) or
                               (other_geo >= 5 and other_geo > 2 * geo.get(home_geo, 0))):
             foreign_pages.append(dom)
+            source_processing.append({"url": p.get("url"), "state": "foreign_market_excluded", "analysed_words": 0})
             continue
         for t, x in p.get("blocks", []):
             if t in ("h1", "h2", "h3", "h4"):
                 h = clean(x).strip().lstrip("#").strip()
                 heads_by_dom[dom].append(h)
                 continue
-            if t not in ("p", "li", "td", "dd", "tr", "blockquote") or budget <= 0:
+            if t not in ("p", "li", "td", "dd", "tr", "blockquote"):
                 continue
             for s in sentences(x):
                 n = len(s.split())
@@ -314,8 +317,15 @@ def build(pages: list[dict], query: str, locale: str, searches: list[str] | None
                 if foreign(s, home_geo, home_cur):
                     dropped_foreign += 1
                     continue
+                if n > budget:
+                    budget_omissions += 1
+                    continue
                 budget -= n
                 sents.append((dom, h, s, t))
+        source_processing.append({"url": p.get("url"), "state": "partial" if budget_omissions else "analysed",
+                                  "input_words": len(body.split()), "analysed_words": MAX_WORDS_PER_PAGE - budget,
+                                  "analysed_sentences": len(sents) - start_sentence,
+                                  "sentences_omitted_by_budget": budget_omissions})
     tok_sents = [(d, h, s, t, words(s)) for d, h, s, t in sents]
     n_pages = len({p["domain"] for p in pages} - set(foreign_pages)) or 1  # "6/8 sites" counts this market's pages
     # "loan to value" and "loan-to-value" are one name: spaced forms join up with the hyphenated one the pages use
@@ -762,7 +772,11 @@ def build(pages: list[dict], query: str, locale: str, searches: list[str] | None
     entities = sorted(ent.values(), key=lambda e: (e["type"] != "central", -sc[tuple(e["tokens"])]))
     return {"central": ck, "pages": n_pages, "market": home_geo, "entities": entities, "attributes": attributes,
             "relations": relations, "sentences": len(sents), "dropped_foreign_sentences": dropped_foreign,
-            "spacy": bool(pos), "foreign_pages": foreign_pages, "unnamed_figures": unnamed[:60]}
+            "spacy": bool(pos), "foreign_pages": foreign_pages, "unnamed_figures": unnamed[:60],
+            "source_processing": source_processing,
+            "extraction_limits": {"words_per_page": MAX_WORDS_PER_PAGE, "entities": 90, "relations": 90,
+                                  "values_per_attribute": 6, "spacy_characters_per_domain": 30000,
+                                  "note": "Focused heuristic inventory, not an exhaustive fact extractor. Complete parser blocks remain available for evidence review."}}
 
 
 def join_compounds(toks: list[str], compounds: set[tuple]) -> list[str]:

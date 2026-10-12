@@ -15,13 +15,17 @@ from datetime import date
 from pathlib import Path
 from urllib.parse import urlparse
 
+import yaml
+
 from . import common as C
 from .clientpages import clean_internal, client_passages, related, relevant_products, site_says
 from .timing import mark
 
 REQUIRED = ["client", "domain", "locale", "page_url", "page_type", "target_query",
             "search_intent", "word_range", "mode"]
-PAGE_TYPES = {"guide", "hub", "spoke", "product-guide", "service"}
+from .pagetype import TYPES
+
+PAGE_TYPES = set(TYPES) | {"hub", "spoke", "product-guide"}
 USABLE = {"verified", "captured", "operator"}
 
 
@@ -609,6 +613,25 @@ def prep(brief_path: str, refresh: bool = False, quiet: bool = False, timing: bo
                                                                f"fact differs, the authority wins): {cp['title'][:70]}",
                           "value": cp["text"], "status": "verified", "basis": "client_page", "verified": True,
                           "source_url": cp["url"], "retrieved_at": C.now_iso()})
+    # What the client sells, from its own pages (this page, its home page, its pages on the topic): the offer a
+    # commercial page exists to make. Each offer sentence is the client's own published claim, usable in its voice.
+    offer = {}
+    try:
+        from .offer import offer_profile
+        opages = ([page_url] if page_info.get("exists") else []) + [f"https://{domain}/"] \
+            + rel["same_topic"][:1] + rel["commercial"][:2]
+        offer = offer_profile(brief["client"], domain, opages, page_info.get("title") or "",
+                              banned=list(brief.get("banned_claims") or []) + list(brief.get("banned_phrases") or []),
+                              refresh=refresh, target_query=brief["target_query"], page_url=page_url)
+        for i, o in enumerate(offer.get("offers", []), 1):
+            facts.append({"id": f"offer:{i}", "claim": "what the client offers, in its own words on its own page",
+                          "value": o["text"], "status": "verified", "basis": "client_page", "verified": True,
+                          "scope": o.get("scope"), "source_url": o["url"], "retrieved_at": C.now_iso()})
+        for c in offer.get("ctas", []):
+            if c["url"] not in link_map["internal"]:
+                link_map["internal"].append(c["url"])
+    except Exception as e:  # the offer model is help, never a reason to stop
+        print(f"  offer model skipped ({type(e).__name__}: {e})")
     # URLs quoted inside verified facts (e.g. an embassy page naming the CEAC address) are linkable too
     known = {o["url"] for o in link_map["official"]}
     for f in facts:
@@ -628,13 +651,15 @@ def prep(brief_path: str, refresh: bool = False, quiet: bool = False, timing: bo
                                              "hardcode_prices", "h1", "single_brand", "banned_phrases", "proper_nouns",
                                              "link_context_bans", "secondary_queries", "notes", "synonyms",
                                              "reader_nouns", "known_failures", "internal_codes", "banned_claims", "author",
-                                             "instructions")},
+                                             "instructions", "page_type_source", "word_range_source", "page_url_source", "conversion_targets",
+                                             "source_context", "site_inventory", "research_format", "batch_plan", "batch_item")},
         "generated_at": C.now_iso(),
         "brief_path": brief["_path"],
         "page": page_info,
         "products": products,
         "facts": facts,
         "client": {"facts": brief["client_facts"], "approved_claims": claims, "banned_claims": brief["banned_claims"],
+                   "offer": offer,
                    "site_says": says},
         "children_count": len(children),
         "blocked_sources": blocked,
@@ -727,6 +752,10 @@ def writer_pack(rd: Path, sheet: dict, lm: dict) -> None:
         W.append(f"- **Operator instructions for this page:** {b['instructions']} (follow them for angle, audience, tone, "
                  "emphasis and length; where one would need an unverified fact or break an accuracy rule, keep the rule "
                  "and log it in editor.md)")
+    from .pagejob import lines as _job
+    job = _job(sheet)
+    W += job
+    (rd / "page_context.md").write_text("\n".join(job) + "\n", encoding="utf-8")
     if pg.get("exists"):
         W += ["", "## Live page now", f"- Title: {pg.get('title')}", f"- H1: {pg.get('h1')}",
               f"- H2s: {'; '.join(pg.get('h2') or [])}", f"- Text: {pg.get('text_excerpt', '')[:900]}"]
@@ -854,11 +883,16 @@ def writer_pack(rd: Path, sheet: dict, lm: dict) -> None:
                          + ". Don't give that feature to any other product.")
     cl = sheet["client"]
     W += ["", "## Client", "Positioning (client_facts; the only source for who the client is):"]
-    W += [f"- {x}" for x in cl["facts"]] or ["- (none supplied: do not describe the client's business model)"]
-    W.append("Approved claims, confirmed on the client's site (with the facts from the client's own pages, the ONLY things the copy may say about the client's services):")
+    offer_lines = (cl.get("offer") or {}).get("offers") or []
+    W += [f"- {x}" for x in cl["facts"]] or (
+        [f"- From its own pages: see \"Page job\" above (`offer:N` facts). Describe {b['client']} only with those words "
+         "and the approved claims below."] if offer_lines else
+        ["- (none supplied and none found on its pages: describe the client only with the approved claims below)"])
+    W.append("Approved claims, confirmed on the client's site (with the facts from the client's own pages, including the `offer:N` lines, the ONLY things the copy may say about the client's services):")
     W += [f"- \"{c['text']}\"" + (f" (from the client's homepage, {c.get('source_url')}; link it there or not at all)"
                                     if c.get("basis") else "")
-          for c in cl["approved_claims"] if c["seen_on_site"]] or ["- (none: do not describe the client's services)"]
+          for c in cl["approved_claims"] if c["seen_on_site"]] or [
+              "- No additional approved claims. Use the scoped offer:N and client-page facts above where relevant; invent no service capabilities."]
     cur_of = {"gb": "£", "us": "$", "ie": "€", "de": "€", "fr": "€", "es": "€", "it": "€", "nl": "€", "au": "$", "ca": "$"}
     want_cur = cur_of.get((b.get("locale") or "en-GB").partition("-")[2].lower())
     for c in cl["approved_claims"]:
@@ -994,18 +1028,75 @@ def print_summary(rd: Path, sheet: dict, lm: dict, secs: float) -> None:
 
 # ---------------------------------------------------------------- add-fact
 
+def add_facts(brief_path: str, file: str) -> list[dict]:
+    """Add many facts in one call: a YAML or JSON list of {id, claim, value, url, scope?, source_text_file?}. One
+    process and one writer-pack rebuild for the whole batch, instead of a Python start and a rebuild per fact."""
+    items = C.load_yaml(Path(file))
+    if isinstance(items, dict):
+        items = items.get("facts")
+    if not isinstance(items, list) or not items:
+        raise ValueError("facts file must contain a non-empty list (or a facts: list)")
+    brief = load_brief(brief_path)
+    rd = latest_run(brief)
+    out, valid, seen = [], [], set()
+    for it in items or []:
+        if not isinstance(it, dict):
+            it = {}
+        missing = [k for k in ("id", "claim", "value", "url") if not str(it.get(k) or "").strip()]
+        fid = str(it.get("id") or "?")
+        if missing or fid in seen:
+            reason = "missing " + ", ".join(missing) if missing else "duplicate id in batch"
+            out.append({"id": fid, "status": "invalid", "reason": reason})
+            print(f"{fid}: invalid - {reason}")
+            continue
+        seen.add(fid)
+        valid.append(it)
+    mark(rd, "facts", "start")
+    try:
+        # Fetch each source once, concurrently. Verification still checks every claim and condition.
+        reqs = [{"url": u, "kind": "official", "parse": "html"}
+                for u in dict.fromkeys(C.clean_url(str(it["url"])) for it in valid)]
+        pages = C.run_async(C.fetch_many(reqs)) if reqs else {}
+        records = []
+        for it in valid:
+            url = C.clean_url(str(it["url"]))
+            f, res = _verify_fact(str(it["id"]), str(it["claim"]), str(it["value"]), url,
+                                  it.get("source_text_file"), it.get("scope"), pages.get(url))
+            records.append((f, res))
+            out.append(f)
+            print(f"{f['id']}: {f['status']}" + (f" - {f['reason']}" if f.get("reason") else ""))
+        if records:
+            _record_facts(brief, rd, records)
+    finally:
+        mark(rd, "facts", "end")
+    ok = sum(1 for f in out if f["status"] in USABLE)
+    print(f"{ok} of {len(out)} facts verified" + (f"; fix and re-add the {len(out) - ok} rejected (reasons above)"
+                                                  if ok < len(out) else ""))
+    return out
+
+
 def add_fact(brief_path: str, fid: str, claim: str, value: str, url: str,
-             source_text_file: str | None = None, persist: bool = True, scope: str | None = None) -> dict:
+             source_text_file: str | None = None, persist: bool = True, scope: str | None = None,
+             rebuild: bool = True) -> dict:
     """Add one fact found during step 2. Re-verifies the value against the
     source page (fetched, or text the agent captured when scripts are blocked)."""
     brief = load_brief(brief_path)
     rd = latest_run(brief)
     mark(rd, "verify", "event")
+    f, res = _verify_fact(fid, claim, value, url, source_text_file, scope)
+    _record_facts(brief, rd, [(f, res)], rebuild, persist)
+    print(f"{fid}: {f['status']}" + (f" - {f.get('reason')}" if f.get("reason") else ""))
+    return f
+
+
+def _verify_fact(fid: str, claim: str, value: str, url: str, source_text_file: str | None = None,
+                 scope: str | None = None, res: dict | None = None) -> tuple[dict, dict | None]:
     # tracking parameters are not part of the page: cite the clean address
     url = C.clean_url(url)
     if source_text_file:
         capture(url, source_text_file)
-    res = C.run_async(C.fetch_many([{"url": url, "kind": "official", "parse": "html"}])).get(url)
+    if res is None:
+        res = C.run_async(C.fetch_many([{"url": url, "kind": "official", "parse": "html"}])).get(url)
     if (res or {}).get("final_url") and C.clean_url(res["final_url"]).rstrip("/") != url.rstrip("/") \
             and res.get("state") == "ok":
         # link the page where the fact lives, not the address that redirects to it (minus any tracking the redirect adds)
@@ -1052,43 +1143,56 @@ def add_fact(brief_path: str, fid: str, claim: str, value: str, url: str,
                 f.update(status="not_found", verified=False,
                          reason="the value is too short to prove the claim on its own: give the whole sentence or "
                                 "table row it appears in as the value")
-    with C.file_lock(rd / "fact_sheet.json"):  # parallel --add-fact calls must not overwrite each other
+    return f, res
+
+
+def _record_facts(brief: dict, rd: Path, records: list[tuple[dict, dict | None]],
+                  rebuild: bool = True, persist: bool = True) -> None:
+    with C.file_lock(rd / "fact_sheet.json"):
         sheet = C.load_json(rd / "fact_sheet.json")
         keep_decisions = [d for d in sheet.get("decisions", []) if d not in decisions(sheet, brief)]
-        sheet["facts"] = [x for x in sheet["facts"] if x["id"] != fid] + [f]
+        ids = {f["id"] for f, _ in records}
+        sheet["facts"] = [x for x in sheet["facts"] if x["id"] not in ids] + [f for f, _ in records]
         sheet["checks"] = run_checks(sheet, brief)
         sheet["gaps"] = gaps(sheet, brief)
         sheet["decisions"] = decisions(sheet, brief) + keep_decisions
         C.save_json(rd / "fact_sheet.json", sheet)
         lm = C.load_json(rd / "link_map.json")
-        if url not in {o["url"] for o in lm["official"]}:
-            lm["official"].append({"url": url, "state": (res or {}).get("state"), "status": (res or {}).get("status"),
-                                   "captured": bool(C.captured_text(url)), "label": ((res or {}).get("title") or "")[:60]})
-            C.save_json(rd / "link_map.json", lm)
-        if (rd / "research").exists():
+        known = {o["url"] for o in lm.setdefault("official", [])}
+        for f, res in records:
+            url = f["source_url"]
+            if url not in known:
+                lm["official"].append({"url": url, "state": (res or {}).get("state"), "status": (res or {}).get("status"),
+                                       "captured": bool(C.captured_text(url)), "label": ((res or {}).get("title") or "")[:60]})
+                known.add(url)
+        C.save_json(rd / "link_map.json", lm)
+        if not rebuild:
+            pass  # a batch rebuilds the pack once at the end
+        elif (rd / "research").exists():
             from .pack import research_pack
             research_pack(rd)
         else:
             writer_pack(rd, sheet, lm)
-        if persist and f["status"] in USABLE:
-            _persist_extra(brief, f)
-    print(f"{fid}: {f['status']}" + (f" - {f.get('reason')}" if f.get("reason") else ""))
-    return f
+        if persist:
+            _persist_extras(brief, [f for f, _ in records if f["status"] in USABLE])
 
 
 def _persist_extra(brief: dict, f: dict) -> None:
-    """Append the fact to the brief's extra_facts so future runs re-verify it."""
-    p = Path(brief["_path"])
-    txt = p.read_text(encoding="utf-8")
-    if re.search(r"id:\s*" + re.escape(f["id"]) + r"\s*$", txt, re.M):
+    _persist_extras(brief, [f])
+
+
+def _persist_extras(brief: dict, facts: list[dict]) -> None:
+    """Persist a batch once; replacing an id also replaces its old scope and evidence."""
+    if not facts:
         return
-    if "\nextra_facts:" not in txt:
-        txt = txt.rstrip() + "\n\nextra_facts:   # added by `seo.py prep --add-fact`; re-verified every run\n"
-    esc = lambda s: str(s).replace('"', '\\"')
-    txt += (f"  - id: {f['id']}\n    claim: \"{esc(f['claim'])}\"\n    value: \"{esc(f['value'])}\"\n"
-            + (f"    scope: \"{esc(f['scope'])}\"\n" if f.get("scope") else "")
-            + f"    source_url: {f['source_url']}\n")
-    p.write_text(txt, encoding="utf-8")
+    p = Path(brief["_path"])
+    with C.file_lock(p):
+        data = C.load_yaml(p)
+        ids = {f["id"] for f in facts}
+        data["extra_facts"] = [f for f in data.get("extra_facts") or [] if f.get("id") not in ids]
+        data["extra_facts"] += [{k: f[k] for k in ("id", "claim", "value", "scope", "source_url") if k in f}
+                                for f in facts]
+        p.write_text(yaml.safe_dump(data, sort_keys=False, allow_unicode=True), encoding="utf-8")
 
 
 def pdf_text(url: str) -> str:

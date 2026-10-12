@@ -2,6 +2,15 @@
 
 Load once per run. `seo.py lint` checks most of these mechanically; the rest are yours to judge. Your only inputs are the brief, this file and `writer_pack.md`. The rules hold for any kind of site: a shop, a service business, a publisher, a SaaS company, a public body.
 
+## 0. The page's job (read the writer pack's "Page job" first)
+
+1. The page type decides what the page is for. A **service, product, category, location, home or company page** answers the searcher and makes the client's offer: within the first two paragraphs the reader knows what the client does about their need (in the client's voice or by name) and sees its next step; the page closes with that step. The sections follow the Page job's structure for the type.
+2. Official bodies, regulators and other businesses are the **evidence** for rules, fees and times: cite each where its fact is used. On commercial pages, the main offer and CTA belong to the client. Explain official actions the client cannot perform (identity checks, account access, granted-status checks, statutory payments) accurately when the reader needs them.
+3. Explain the client's verified value. Avoid repeated directions to buy or apply elsewhere and repeated warnings that displace the offer. Keep material limitations, optional-service disclosures, service and authority fees, direct routes and who makes the decision accurate. Consolidate duplicate disclosures; never remove a necessary warning to protect a sale. Do not imply the client can speed up, influence or replace an authority's decision.
+4. Describe the client from the scoped `offer:N` facts, approved claims and client-page facts, paraphrased in its voice. A statement on a client page proves what the client publishes, not an independently proven outcome. Keep its product, route, market and conditions; never transfer one country's processing promise to another. Never invent speed, success rates, guarantees or proof.
+5. **Guides, spokes, hubs and product guides** answer their informational, navigational or comparison task. A selling site does not automatically require a sales opening or a brand section. Mention a client offer briefly only when it is verified and relevant. Official workflows can be the main answer on support or status-check guides.
+6. Commercial structure follows the Page job. Group questions in relevant sections or a compact FAQ with H3s; do not turn a product, category, company or service page into a sequence of PAA headings. Guide question headings remain useful where they match the task.
+
 ## 1. Accuracy
 
 1. Every number, size, price, fee, date, time limit, deadline, official body, product feature and interface label (a setting name, a button) must appear in the writer pack. If it isn't there, verify it in step 2 or write around it. Don't estimate or fill in from memory.
@@ -37,14 +46,14 @@ Load once per run. `seo.py lint` checks most of these mechanically; the rest are
 - Add something the top pages don't have: a worked example built from the facts, a comparison table, a decision rule, the client's own data. That is the page's information gain.
 - When you explain a check or a test, give every outcome: what passing looks like, what failing looks like, and what to do next in each case, in plain sentences ("If the paint drags, wait for a warmer day"), never as "Pass:/Fail:" labels.
 - Forums and reviews are evidence of experience, never of rules or numbers. Use one only when the pack quotes a real comment from readers like this page's (same country, same situation), link the comment, and attribute it plainly. Never quote a forum without its link, never on a YMYL page as support for advice, and never write "people on Reddit say…" without a quote behind it.
-- Tie the client in once where it is true and useful: one sentence on how the client's own product or service handles the thing the page explains, from the approved claims or the client's pages.
+- On informational pages, tie the client in briefly where it is true and useful. On commercial pages, the opening, process, proof and closing action follow section 0; do not limit the offer to one incidental sentence.
 - State conditions the way people do: "If you rent, …", not "When you rent, …" for a case that may not apply.
 - Write as the client's page. Where the client's products, services or guides help the reader take the next step, link them naturally inside the relevant section (see section 6). Don't end with a list of links.
 - Describe the client's own product or service directly, from its approved claims ("Acme sells refurbished laptops with a 12-month warranty"). Never quote the client's own tagline back at the reader in the third person ("X's site invites you to…"), and link a client claim only to the page the pack lists as its source.
 - Prefer independent sources (authorities, charities, professional bodies, research) over a competitor of the client. When a fact exists only in a competitor's material (the pack marks these), attribute it as theirs, limit it to their product, never build the main answer on it, and never make it the first link on the page.
 - When the client publishes its own method, plan or figures for this question, the page leads with the client's way, in the client's voice; other sources are comparisons or support. Name a source only where it adds weight, not on every step.
 - When sources disagree (one says N days, another 2N), say which you recommend and why, in one sentence. Never leave the reader to reconcile them.
-- Never mention the research itself ("the top results", "ranking pages", "most guides online"): give the consensus as your own statement.
+- Never mention the research itself ("the top results", "ranking pages", "most guides online"). State verified information in your own words; agreement between competitors alone does not establish a fact.
 - Questions about a competitor's product ("Is <competitor> a …?") are not sections on the client's page. Mention the competitor where a comparison helps, at most.
 
 ## 3. Sentences
@@ -97,7 +106,7 @@ Load once per run. `seo.py lint` checks most of these mechanically; the rest are
 
 - Order sections the way the reader needs them and the top pages answer them: the main task or answer first, background and edge cases after. Never end on a definition or background section; the last section is a decision or a next step.
 - No H2 may repeat the H1's question in other words ("How much X do I need per day?" under "How much X do I need?"); merge it into the opening. Headings keep one person ("you" or "I") throughout.
-- Explanatory H2s are the reader's questions or precise "How to" tasks, sentence case, each meaningful on its own. Answer each distinct question once: related variants share one heading. Skip a question you can't answer truthfully (record a `Skip:` line in the outline). A heading promises exactly what its section delivers: if the evidence covers a different period, group or measure than the question asks (15 years of data under "over 10 years"), word the heading to what the evidence answers.
+- On guides, explanatory H2s are the reader's questions or precise "How to" tasks. Commercial headings name the offer, process, specification or decision; questions can be FAQ H3s. Use sentence case and headings meaningful on their own. Answer each distinct question once: related variants share one heading. Skip a question you can't answer truthfully (record a `Skip:` line in the outline). A heading promises exactly what its section delivers: if the evidence covers a different period, group or measure than the question asks (15 years of data under "over 10 years"), word the heading to what the evidence answers.
 - Use tables only for real comparisons where every cell is a fact or a shown calculation, and link the table's source in the sentence that introduces it.
 - For a "how to" query, give the main method as numbered steps: what to prepare, each action in order, and how to read the result (what passing and failing look like). Scope stays honest: if the title or meta names a case (a type, a product, a group), the method covers that case or the title drops it.
 - Fit the page type (decided from the page itself before research; the pack states it):
@@ -109,7 +118,7 @@ Load once per run. `seo.py lint` checks most of these mechanically; the rest are
   - **company** (about, contact): facts about the client only, from its own pages.
   - **guide** complete for the reader's decision; **hub** short, linking child pages; **spoke** specific to one entity or task; **product-guide** products first, each with a data-derived limitation.
 - Every URL comes from the "Links you may use" section of the pack. Never guess, shorten or rebuild a URL.
-- Link products to their own pages, never to a collection. Link the authority where the reader acts. Use descriptive anchors of 2–6 words that name the target page (its title, not your sentence). Link each source page once, on the first sentence that credits it; later claims from it name the source without linking again. When you credit a publisher whose other page you linked more recently, link the page this claim is on: "the RHS says" sends the reader to the nearest RHS link, so that link must be the page that says it. Never link one page more than twice, and the client's own pages once each. Never link the client's existing page on this same query: this page replaces it.
+- Link products to their own pages, never to a collection. Link an authority where its rule or figure is used (on a guide, also where the reader acts there; on a commercial page the main CTA belongs to the client while necessary official actions remain accurate). Use descriptive anchors of 2–6 words that name the target page (its title, not your sentence). Link each source page once, on the first sentence that credits it; later claims from it name the source without linking again. When you credit a publisher whose other page you linked more recently, link the page this claim is on: "the RHS says" sends the reader to the nearest RHS link, so that link must be the page that says it. Never link one page more than twice, and contextual client pages once each; a main commercial CTA may appear near the opening and close. Never link the client's existing page on this same query: this page replaces it.
 - Put an internal link on the words in a sentence that already says something useful; don't add a sentence whose only job is to carry a link ("X's guide to Y shows how."). Keep internal links to about one per 150 words, and don't end most sections the same way.
 - Stay within the word range. A guide should cover what the top pages agree on, so if the draft is well under the pack's median length, check the topic list for gaps before you finish.
 
@@ -118,24 +127,24 @@ Load once per run. `seo.py lint` checks most of these mechanically; the rest are
 - **Declaration first.** The first sentence under a heading answers it directly, in natural word order: the thing asked about, the action or the number as subject, whichever a person would say. Put conditions after the declaration unless the answer depends on them (rule 1.7).
 - **Certainty with parameters.** State facts plainly; hedge only when the source does, and name the condition. Counts are followed by their members: "two conditions apply: A and B".
 - **Define and connect.** Expand acronyms on first use unless they are brand names. Say how entities relate with a precise verb. Cover the pack's must-cover entities with their attributes and values.
-- **One macro context, macro to micro.** No "Introduction", "Overview", "Conclusion" or "FAQ" headings.
+- **One macro context, macro to micro.** No generic "Introduction", "Overview" or "Conclusion" headings. A compact FAQ with specific H3 questions is allowed on commercial pages.
 - **Paragraphs.** 2–4 sentences, one idea each. List items start with the same part of speech. Number a list only when its items are steps done in order; alternatives (method A, method B or method C) are bullets or a table.
 - **Reasons add information.** "Replace it within five years, because it lasts up to five years" restates itself; give the reason that the reader didn't already have, or none.
 - **Bold the answer, not the keyword.** At most one bold per section.
-- **Match, then add.** Cover what the top pages agree on (the pack's topics and consensus figures), then add what they miss.
+- **Serve the task, then support it.** Lead with the answer or relevant offer this page exists to provide. Cover relevant shared topics and verified useful gaps where they help the reader; competitor consensus and order are evidence leads, not instructions that override page purpose.
 - **Responsiveness test.** For every H2 question and the target query, you can point to the one sentence that answers it.
 
 ## 8. Rankability
 
 - Put the target query's words in the title and the opening paragraph, in natural order and natural grammar.
 - Cover each secondary query from the pack in a heading or an opening sentence, only where it reads naturally.
-- Link internally to the client's relevant pages and to the authorities the reader acts on.
+- Link internally to the client's relevant pages, and to the authorities whose rules the page states.
 
 ## 8b. Answer engines (AEO and GEO)
 
 AI answers (Google AI Overviews, ChatGPT, Perplexity, Gemini) quote passages, not pages. Write every answer so it can be lifted on its own and still be right.
 
-- **Self-contained answers.** The first paragraph under each H2 answers that heading in 40–60 words and makes sense with nothing else around it: name the subject in full ("A stocks and shares ISA…", not "It…" or "This…"), and carry the condition and the figure in the same paragraph.
+- **Self-contained answers.** The first paragraph under a question heading answers it directly; guide snippet answers aim for 40–60 words and makes sense with nothing else around it: name the subject in full ("A stocks and shares ISA…", not "It…" or "This…"), and carry the condition and the figure in the same paragraph.
 - **One-sentence definition.** Early on, define the main entity as "X is a Y that Z", in the reader's words, with the attribute that sets it apart.
 - **A sourced figure early.** Where the topic has a defining number (a limit, a rate, a dose, an allowance), give it with its source and date in the first 300 words.
 - **Quote where wording matters.** For a rule or an official definition, quote the authority's exact words in quotation marks, name it and link it. One or two such quotes a page; everything else in your own words.
@@ -144,4 +153,4 @@ AI answers (Google AI Overviews, ChatGPT, Perplexity, Gemini) quote passages, no
 
 ## 9. When facts are missing
 
-Never pause and never ask. Leave the claim out, or say plainly what the reader should check and link the authority. The omission is logged in the report as a decision.
+Never pause and never ask. Leave the claim out, or say plainly what the reader should check and link the authority (on a commercial page, without making that check the page's advice). The omission is logged in the report as a decision.

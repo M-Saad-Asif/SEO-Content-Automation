@@ -1,0 +1,6 @@
+# Optional: copy to seo-context.yaml in this repo or the working project.
+# `seo.py site <website>` creates this binding and its page inventory automatically.
+# Existing clients can use client_slug; new installations can use domain alone.
+domain: example.com
+# client_slug: example-com
+# inventory: sites/example-com/inventory.json

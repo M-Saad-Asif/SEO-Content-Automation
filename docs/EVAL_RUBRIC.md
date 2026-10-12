@@ -11,17 +11,17 @@ The perception baseline is the operator's own documented failures (from the Anti
 
 | # | Criterion | Points | Full marks when |
 |---|---|---:|---|
-| 1 | Intent and SERP fit | 10 | Format and opening match the SERP's dominant intent and format; the first screen answers the query |
+| 1 | Intent and SERP fit | 10 | The first screen answers the query and fits the declared page type; SERP intent informs coverage, without replacing the client's page purpose with a competitor's format |
 | 2 | Coverage and responsiveness | 15 | Every H2 question answered in its first 40–50 words; must-cover entities and expected topics covered; nothing that belongs on another page |
-| 3 | Accuracy and sourcing | 15 | Every number, rule and claim traces to a verified fact or the client's data; YMYL costs and conditions stated; official sources linked where the reader acts |
+| 3 | Accuracy and sourcing | 15 | Every number, rule and claim traces to a verified fact or the client's data; YMYL costs and conditions stated; official sources linked where their rule or figure is used |
 | 4 | Information gain | 10 | Clear value beyond the top 10: client data, computed comparisons, unanswered questions, attributed experience, a reasoned recommendation |
-| 5 | Humanization | 20 | Reads as written by an experienced person; no AI tells (deduction table below) |
+| 5 | Humanization | 15 | Reads as written by an experienced person; no AI tells (deduction table below; cap the total deduction at 15) |
 | 6 | Language quality | 10 | No dangling modifiers, noun stacks, nominalisations, vague "this", tense or person drift, or locale errors; sentences are clear on first read |
-| 7 | Structure and on-page SEO | 10 | Title (about 60 characters, query), meta (140–160), one H1, sentence-case question H2s, logical heading vector, tables only where facts fill them, descriptive internal and external links |
-| 8 | Brand and conversion | 5 | Client voice; only approved claims; one natural next step; no hype |
+| 7 | Structure and on-page SEO | 10 | Title (about 60 characters, query), meta (140–160), one H1, logical sections for the page type; guide question headings and commercial FAQ H3s where useful; tables only where facts fill them; descriptive links |
+| 8 | Page job: brand and conversion | 10 | Commercial pages explain the client's scoped offer and verified next step near the opening and close, with appropriate process and proof. Sources support facts; necessary official actions, limitations and disclosures remain accurate without repetitive competing CTAs. Guides, hubs and comparisons answer their task, with a client offer only where verified and relevant |
 | 9 | Trust and E-E-A-T signals | 5 | Who it's for, limitations, sources and dates visible in the prose; experience attributed; no fake first-hand claims |
 
-## Humanization deductions (from 20)
+## Humanization deductions (from 15)
 
 | Tell | Deduction | Example (from earlier runs) |
 |---|---:|---|

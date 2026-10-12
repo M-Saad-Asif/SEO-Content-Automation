@@ -12,6 +12,10 @@ clients/*
 runs/*
 !runs/.gitkeep
 cache/
+sites/
+batches/
+seo-context.yaml
+.seo-context.yaml
 
 # python and tools
 __pycache__/

@@ -9,7 +9,7 @@ description: Build the knowledge graph of a topic in one market from the pages t
 
 **Inputs:** every page `competitor_scrape` read (Spider renders them), the People Also Ask questions, related searches and autocomplete from `serp_intel`, and the query map.
 
-**Output:** `research/semantic_graph.json` (`graph` holds the full graph; the older keys `entities`, `must_cover_entities`, `attributes`, `triples_consensus`, `triples_unique`, `contradictions`, `heading_topics`, `consensus_figures` and `paa_gaps` are derived from it for lint, the outline check and the review). The writer reads it as `knowledge_graph.md`, rendered by `seolib/kgdoc.py` with the verified facts attached to each entity.
+**Output:** `research/semantic_graph.json` (`graph` holds the full graph; the older keys `entities`, `must_cover_entities`, `attributes`, `triples_consensus`, `triples_unique`, `contradictions`, `heading_topics`, `consensus_figures` and `paa_gaps` are derived from it for lint, the outline check and the review). The writer reads `article_context.json`: the complete semantic inventory, scoped usable facts, coverage decisions and URL/passage references. Raw parser blocks stay indexed in competitor_scrape.json. This is local JSON extraction, with no graph database, diagram or extra LLM call; unchanged source/demand/market/code inputs reuse the cached extraction.
 
 ## This market only
 - A page written for another market (most of its amounts in another currency, or mostly about another country) is left out whole, and named in the decisions.
@@ -29,4 +29,4 @@ A figure (money, percentage, duration, quantity, ranges such as "between £50k a
 Two entities in one clause with only a verb phrase between them ("loan — secured against — property"). Two or more sites make it consensus; one site's link is kept only when it is specific or touches the topic, and is labelled a claim to check.
 
 ## How the writer uses it
-Consensus may be said in the writer's own words. Numbers come only from verified facts on YMYL pages; elsewhere a value three or more sites state may be used. Where sites differ, the verified fact decides.
+Consensus is an evidence lead, including repeated numbers. Verify factual claims against a suitable source; keep market, scope, qualifier and conditions. Agreement between websites is not independent proof. Where sources conflict, document the scoped resolution.

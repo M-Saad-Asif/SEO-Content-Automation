@@ -1,4 +1,4 @@
-"""The two research documents the writer works from, besides the writer pack:
+"""Build the cached article-context JSON; optionally export two legacy Markdown research documents.
 
 - knowledge_graph.md: the topic's entities (typed, defined), their attributes and the values the ranking pages
   state, the relationships between them, and the verified facts attached to each entity. What to say.
@@ -57,8 +57,13 @@ def _market(locale: str) -> str:
 
 def write_docs(rd: Path) -> None:
     rd = Path(rd)
+    from .article_context import build
+    build(rd)
     sheet = C.load_json(rd / "fact_sheet.json") or {}
     b = sheet.get("brief") or {}
+    # One cached JSON handoff is the default. Keep old Markdown exports only for an explicit legacy brief.
+    if b.get("research_format") != "markdown":
+        return
     kgo = C.load_json(rd / "research" / "semantic_graph.json") or {}
     out = C.load_json(rd / "research" / "topic_outline.json") or {}
     g = kgo.get("graph") or {}
@@ -215,8 +220,10 @@ def _outline_md(o: dict, g: dict, sheet: dict, b: dict) -> str:
          f"{len(allq)} questions ({h2} planned as H2s): " + ", ".join(f"{k} {v}" for k, v in sorted(src.items(), key=lambda kv: -kv[1])) + ".",
          "", "**How to use it**",
          "- Build `outline.md` from these sections, macro to micro: one H2 per section that fits the page type, in the "
-         "reader's words (an **[H2]** question is the heading itself), and its sub-sections as H3s where the page needs them.",
-         "- Answer every question listed: **[H2]** under its own heading; **[in section]** in a sentence or two inside that "
+         "reader's words, and its sub-sections as H3s where the page needs them. **[H2]** marks high-priority question coverage, not a compulsory heading on every page type.",
+         "- Page job takes precedence over competitor section order. On commercial pages, place questions in the "
+         "offer/process/eligibility sections or a compact FAQ with H3s; record their placement in outline coverage notes.",
+         "- Answer every relevant question listed: **[H2]** as a guide heading or commercial section/FAQ answer; **[in section]** in a sentence or two inside that "
          "section, in the question's own words; **[link]** briefly, then link the page named. A question you cannot "
          "answer from verified facts or the client's pages gets `Skip: <question> — <reason>` in outline.md.",
          "- \"Cover\" lists what the ranking pages discuss in that section: the entities to name and the figures to give. "

@@ -58,6 +58,10 @@ def build(rd: Path) -> int:
     W = [f"# Fact-check sheet: {rd.name}", "",
          f"{len(cl)} sentences from final.md that may state a fact. Give each a verdict in verify.md "
          "(format in plugins/fact_check/SKILL.md).", ""]
+    b = (C.load_json(rd / "fact_sheet.json") or {}).get("brief") or {}
+    W += [f"Page context: {b.get('page_type')} for {b.get('client')}; query: {b.get('target_query')}.",
+          "Preserve the page's purpose while fixing facts. Do not add official-site CTAs to replace a scoped client "
+          "offer. Keep necessary official actions, material limitations and disclosures accurate.", ""]
     for c in cl:
         W.append(f"## C{c['n']} [{c['section'][:60]}]")
         W.append(f"\"{c['sentence']}\"")

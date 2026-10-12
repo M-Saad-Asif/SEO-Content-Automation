@@ -46,6 +46,14 @@ def CMD() -> str:
     return f"{PY()} scripts/seo.py" if _in_repo() else f'{PY()} "{(C.ROOT / "scripts" / "seo.py").as_posix()}"'
 
 
+def ARG(value: str) -> str:
+    """Quote printed CLI arguments, including absolute batch brief paths on Windows."""
+    import os
+    import shlex
+    import subprocess
+    return subprocess.list2cmdline([str(value)]) if os.name == "nt" else shlex.quote(str(value))
+
+
 def _state(rd: Path) -> dict:
     return C.load_json(rd / "state.json") or {"done": {}}
 
@@ -54,16 +62,39 @@ def _save_state(rd: Path, st: dict) -> None:
     C.save_json(rd / "state.json", st)
 
 
+def _end_agent_stage(rd: Path, st: dict) -> None:
+    active = st.pop("active_stage", None)
+    if active:
+        from .timing import mark
+        mark(rd, "agent:" + active, "end")
+        _save_state(rd, st)
+
+
+def _content_sig(path: Path, sheet: dict) -> str:
+    """Linker may add internal links; changed facts, wording or external citations need a fresh check."""
+    import hashlib
+    import json
+    import re
+    from .lint import parse_md
+    from .pagejob import is_client_url
+    md = path.read_text(encoding="utf-8")
+    meta, blocks = parse_md(md)
+    meta.pop("updated", None)
+    text = [(b["type"], C.collapse(b["text"])) for b in blocks]
+    sources = sorted(u for u in re.findall(r"\]\((https?://[^)\s]+)\)", md) if not is_client_url(u, sheet))
+    return hashlib.sha256(json.dumps([meta, text, sources], sort_keys=True).encode()).hexdigest()
+
+
 def mark_done(brief_path: str, step: str) -> None:
     from .prep import load_brief
     rd = _current_run(load_brief(brief_path))
     if rd is None:
-        raise SystemExit(f"No run yet. Run: {CMD()} next {brief_path}")
+        raise SystemExit(f"No run yet. Run: {CMD()} next {ARG(brief_path)}")
     st = _state(rd)
     if step == "retry":
         st["rounds"], st["round_sig"] = {}, {}
         _save_state(rd, st)
-        print(f"OK: fix-round counters reset for {rd.name}. Now run: {CMD()} next {brief_path}")
+        print(f"OK: fix-round counters reset for {rd.name}. Now run: {CMD()} next {ARG(brief_path)}")
         return
     need = {"research": rd / "research" / "dossier.md", "expert": rd / "expert_notes.md",
             "review": rd / "review.md", "expert_read": rd / "expert_read.md", "editor": rd / "editor.md",
@@ -87,8 +118,11 @@ def mark_done(brief_path: str, step: str) -> None:
             print(f"- {p}")
         raise SystemExit(1)
     st["done"][step] = C.now_iso()
+    if step == "verify":
+        st["verified_content"] = _content_sig(rd / "draft.md", C.load_json(rd / "fact_sheet.json") or {})
+    _end_agent_stage(rd, st)
     _save_state(rd, st)
-    print(f"OK: '{step}' recorded for {rd.name}. Now run: {CMD()} next {brief_path}")
+    print(f"OK: '{step}' recorded for {rd.name}. Now run: {CMD()} next {ARG(brief_path)}")
 
 
 GATES = {  # headings each agent output must have (the formats in the skills); matched case-insensitively
@@ -106,6 +140,10 @@ def _gate(step: str, rd: Path, text: str) -> list[str]:
     heads = [h.strip().lower() for h in re.findall(r"^#{1,4}\s+(.+)$", text, re.M)]
     need = [g for g in GATES.get(step, []) if not (g == "expert read" and not (rd / "expert_read.md").exists())]
     out = [f"missing section \"{g}\" (see the skill's format)" for g in need if not any(g in h for h in heads)]
+    from .pagejob import COMMERCIAL
+    commercial = (C.load_json(rd / "fact_sheet.json") or {}).get("brief", {}).get("page_type") in COMMERCIAL
+    if commercial and step in ("expert", "editor") and not any("offer" in h or "page job" in h for h in heads):
+        out.append("missing Page job / client offer section: state the scoped offer, appropriate structure and verified next step")
     if step == "research":
         if not re.search(r"^###\s+\S", text, re.M):
             out.append("\"Answers by question\" has no ### question entries")
@@ -127,6 +165,13 @@ def _gate(step: str, rd: Path, text: str) -> list[str]:
         if main and not re.search(r"`[^`]+`", main.group(1)):
             out.append("the main answer cites no fact id")
     if step == "editor":
+        context = C.load_json(rd / "article_context.json") or {}
+        if context:
+            coverage = re.search(r"^#{1,4}[^\n]*coverage[^\n]*$(.*?)(?=^#{1,4}\s|\Z)", text, re.M | re.I | re.S)
+            resolved = set(re.findall(r"\b(?:S\d+|Q\d+)\b", coverage.group(1))) if coverage else set()
+            missing = [i["id"] for i in context.get("coverage_requirements", []) if i.get("required") and i["id"] not in resolved]
+            if not coverage or missing:
+                out.append("Coverage section must resolve required context ids with final-page placements or specific exclusions: " + ", ".join(missing[:20]))
         ledger = re.search(r"^#{1,4}[^\n]*claim ledger[^\n]*$(.*?)(?=^#{1,4}\s|\Z)", text, re.M | re.I | re.S)
         if ledger and len([l for l in ledger.group(1).splitlines() if l.strip()]) < 3:
             out.append("the claim ledger lists fewer than three factual sentences")
@@ -185,11 +230,22 @@ def _rounds(rd: Path, st: dict, key: str, cap: int, R: str, brief_path: str, lef
     print("Still blocking:")
     print("\n".join(_finding_lines(left)) if isinstance(left, list) else left)
     print("\nStop here. Reply with STOPPED, the two paths and the blocking lines above, and nothing else.")
-    print(f"(An operator can reset the counter with: {CMD()} done {brief_path} retry)")
+    print(f"(An operator can reset the counter with: {CMD()} done {ARG(brief_path)} retry)")
     return True
 
 
 def _task(title: str, lines: list[str], brief_path: str, confirm: str | None = None) -> None:
+    from .prep import load_brief
+    from .timing import mark
+    rd = _current_run(load_brief(brief_path))
+    if rd:
+        st = _state(rd)
+        stage = confirm or ("outline" if "OUTLINE" in title else "draft" if title.startswith("DRAFT") else "fix")
+        if st.get("active_stage") != stage:
+            _end_agent_stage(rd, st)
+            mark(rd, "agent:" + stage, "start")
+            st["active_stage"] = stage
+            _save_state(rd, st)
     print(SEP)
     print(f"NEXT TASK: {title}")
     print(SEP)
@@ -202,10 +258,10 @@ def _task(title: str, lines: list[str], brief_path: str, confirm: str | None = N
     print()
     print(f"Checks (outline check, lint, review sheet, validate, eval) are run by `next`; do not run them yourself, even")
     print(f"where a WORKFLOW.md section mentions them. At any step you may record a verified fact with:")
-    print(f"  {CMD()} prep {brief_path} --add-fact <id> \"<claim>\" \"<exact words>\" <url> --scope \"<who/when>\"")
+    print(f"  {CMD()} prep {ARG(brief_path)} --add-fact <id> \"<claim>\" \"<exact words>\" <url> --scope \"<who/when>\"")
     if confirm:
-        print(f"When the task is complete, run: {CMD()} done {brief_path} {confirm}")
-    print(f"Then run: {CMD()} next {brief_path}")
+        print(f"When the task is complete, run: {CMD()} done {ARG(brief_path)} {confirm}")
+    print(f"Then run: {CMD()} next {ARG(brief_path)}")
     print("Do only this task. Do not start the next one until `next` prints it.")
 
 
@@ -227,6 +283,7 @@ def next_step(brief_path: str, mode: str | None = None) -> None:
         st["mode"] = mode or brief.get("research_mode") or "deep"
         _save_state(rd, st)
     st = _state(rd)
+    _end_agent_stage(rd, st)
     deep = st.get("mode", "deep") == "deep"
     R = rel(rd)
 
@@ -240,8 +297,9 @@ def next_step(brief_path: str, mode: str | None = None) -> None:
             "1. Read plugins/deep_research/SKILL.md fully. It is your complete instruction for this task.",
             f"2. Work {R}/research_plan.md as the skill says, using your own web search and fetch tools. If you have",
             f"   no tool that opens a URL, read pages with: {CMD()} read <url>",
-            f"3. Record each finding with: {CMD()} prep {brief_path} --add-fact <id> \"<claim>\" \"<exact words>\" <url> --scope \"<who/when>\"",
-            "   (one call at a time; wait for each to finish).",
+            f"3. Write your findings to {R}/research/facts.yaml (a list of: id, claim, value = the page's exact words, url,",
+            f"   scope) and record them all in one call: {CMD()} prep {ARG(brief_path)} --add-facts {R}/research/facts.yaml",
+            "   Fix and re-run only the rejected ones (the reason is printed). One call for the batch, not one per fact.",
             f"4. Write {R}/research/dossier.md in the format the skill gives.",
             "Do not write the article.",
         ], brief_path, confirm="research")
@@ -255,7 +313,7 @@ def next_step(brief_path: str, mode: str | None = None) -> None:
             "",
             "1. Read plugins/expert_review/SKILL.md, pass 1 (everything above \"Pass 2\"). It is your complete instruction.",
             f"2. Read the brief ({brief_path}), the client profile in clients/, {R}/research/dossier.md and {R}/writer_pack.md"
-            " (its decisions section first).",
+            " (its Page job and decisions sections first).",
             f"3. Write {R}/expert_notes.md in the format the skill gives. Never invent experience, statistics or credentials.",
         ], brief_path, confirm="expert")
         return
@@ -266,17 +324,17 @@ def next_step(brief_path: str, mode: str | None = None) -> None:
     if not draft.exists():  # the facts the researcher verified since the scripts ran belong in both documents
         from .kgdoc import write_docs
         write_docs(rd)
-    docs = [f"{R}/{n}" for n in ("topic_outline.md", "knowledge_graph.md") if (rd / n).exists()]
+    docs = [f"{R}/article_context.json"] if (rd / "article_context.json").exists() else []
     if deep and not st["done"].get("outline"):
         if not outline.exists():
             _task("OUTLINE (role: writer)", [
                 f"Run folder: {R}",
-                "1. Read RULES.md and WORKFLOW.md section 3 (Outline).",
+                "1. Read RULES.md (section 0 first) and WORKFLOW.md section 3 (Outline).",
                 f"2. Read {R}/writer_pack.md, " + (", ".join(docs) + ", " if docs else "")
                 + f"{R}/research/dossier.md and {R}/expert_notes.md.",
                 f"3. Write {R}/outline.md exactly as WORKFLOW.md section 3 describes (H1, H2/H3s, Skip:/Linked: lines,",
                 "   one line under each heading naming the facts it uses)"
-                + (", built from topic_outline.md's sections and their questions." if docs else "."),
+                + (", using article_context.json's sections, coverage requirements and page purpose." if docs else "."),
             ], brief_path)
             return
         from .outline import check_outline
@@ -295,7 +353,7 @@ def next_step(brief_path: str, mode: str | None = None) -> None:
     if not draft.exists():
         _task("DRAFT (role: writer)", [
             f"Run folder: {R}",
-            "1. Read RULES.md fully and WORKFLOW.md section 4 (Draft).",
+            "1. Read RULES.md fully (section 0, the page's job, first) and WORKFLOW.md section 4 (Draft).",
             f"2. Read {R}/writer_pack.md, " + (", ".join(docs) + ", " if docs else "") + f"{R}/research/dossier.md"
             + (f", {R}/expert_notes.md and {R}/outline.md." if deep else "."),
             f"3. Write {R}/draft.md in one pass, as WORKFLOW.md section 4 describes (front matter, one H1, Markdown only).",
@@ -310,7 +368,12 @@ def next_step(brief_path: str, mode: str | None = None) -> None:
     from .lint import lint_text, load_research
     sheet = C.load_json(rd / "fact_sheet.json")
     lm = C.load_json(rd / "link_map.json") or {}
-    res = lint_text(draft.read_text(encoding="utf-8"), sheet, lm, load_research(rd))
+    from .timing import mark
+    mark(rd, "lint", "start")
+    try:
+        res = lint_text(draft.read_text(encoding="utf-8"), sheet, lm, load_research(rd))
+    finally:
+        mark(rd, "lint", "end")
     C.save_json(rd / "lint.json", res)
     blocks = [f for f in res["findings"] if f["severity"] == "block"]
     if blocks:
@@ -322,6 +385,10 @@ def next_step(brief_path: str, mode: str | None = None) -> None:
         _task("FIX LINT BLOCKS (role: writer)", lines, brief_path)
         return
     st.setdefault("rounds", {})["lint"] = 0
+    if st.get("verified_content") and "verify" in st["done"] and _content_sig(draft, sheet) != st["verified_content"]:
+        for step in ("verify", "internal_links", "complete"):
+            st["done"].pop(step, None)
+        st.pop("verify_draft", None)
     _save_state(rd, st)
 
     # 7. editor's review sheet (script builds it, agent resolves it) --------------------------------------------------
@@ -343,7 +410,10 @@ def next_step(brief_path: str, mode: str | None = None) -> None:
 
     # 8. validate (script) ---------------------------------------------------------------------------------------------
     final = rd / "final.md"
-    if not final.exists() or final.stat().st_mtime < draft.stat().st_mtime:
+    import hashlib
+    draft_sig = hashlib.sha256(draft.read_bytes()).hexdigest()
+    if not final.exists() or st.get("validated_draft") != draft_sig or \
+            st.get("validated_final") != hashlib.sha256(final.read_bytes()).hexdigest():
         from .validate import validate
         ok, out = _quiet(validate, str(rd))
         if not ok:
@@ -355,6 +425,8 @@ def next_step(brief_path: str, mode: str | None = None) -> None:
             ], brief_path)
             return
         st.setdefault("rounds", {})["validate"] = 0
+        st["validated_draft"] = draft_sig
+        st["validated_final"] = hashlib.sha256(final.read_bytes()).hexdigest()
         _save_state(rd, st)
 
     # 8b. the expert read: an independent practitioner's opinion on the finished page, with today's news (deep) -----------
@@ -364,7 +436,7 @@ def next_step(brief_path: str, mode: str | None = None) -> None:
             "",
             "1. Read plugins/expert_review/SKILL.md, section \"Pass 2: the expert read of the finished article\". It is",
             "   your complete instruction for this task.",
-            f"2. Read {R}/final.md, the brief ({brief_path}) and the client profile in clients/. Search today's news on",
+            f"2. Read {R}/final.md, {R}/page_context.md, the brief ({brief_path}) and the client profile in clients/. Search today's news on",
             "   the topic (last 18 months) with your own search tools; record any fact the page needs with --add-fact.",
             f"3. Write {R}/expert_read.md in the format the skill gives. Do not edit the draft: the editor applies it next.",
         ], brief_path, confirm="expert_read")
@@ -381,6 +453,9 @@ def next_step(brief_path: str, mode: str | None = None) -> None:
             f"2. Write {R}/editor.md: deductions per rubric criterion with quoted lines; generic, link-only and",
             "   announcing sentences; repeated section endings; the claim ledger (every factual sentence → fact id →",
             "   same case yes/no); limits written with or less/or more checked against their facts; missing shared topics."
+            "\n   Add a section \"## Page job\": the page type, scoped client offer, verified next step, structure and necessary disclosures; fix any drift."
+            "\n   Add a section Coverage: resolve every required article_context.json coverage id against the final page,"
+            " including body/table/FAQ placements or a specific evidence-based exclusion. Check the main task comes before supporting context."
             + ("" if not (rd / "expert_read.md").exists() else
                "\n   Add a section \"## Expert read\": every item of expert_read.md with what you changed, or why not."),
             f"3. Fix {R}/draft.md in place for each item (cut, rewrite, or add a verified fact)"
@@ -390,9 +465,11 @@ def next_step(brief_path: str, mode: str | None = None) -> None:
 
     # 9b. independent fact-check (agent) ----------------------------------------------------------------------------
     if "verify" not in st["done"]:
-        if not (rd / "verify_claims.json").exists():  # built once, from the validated page, so C-numbers stay stable
+        if not (rd / "verify_claims.json").exists() or st.get("verify_draft") != draft_sig:
             from .verify import build
             build(rd)
+            st["verify_draft"] = draft_sig
+            _save_state(rd, st)
         _task("FACT-CHECK (role: independent fact-checker)", [
             "Give this task to a fresh agent that has not written or researched the page (Claude Code: the",
             "`seo-fact-checker` agent; Cursor/Codex/Antigravity: a new chat with this task, or if you cannot, do it",
@@ -426,6 +503,7 @@ def next_step(brief_path: str, mode: str | None = None) -> None:
     if ft.startswith("---\n") and "\nupdated:" not in ft.split("\n---", 1)[0]:
         from datetime import date
         final.write_text(ft.replace("---\n", f"---\nupdated: {date.today().isoformat()}\n", 1), encoding="utf-8")
+    st["validated_final"] = hashlib.sha256(final.read_bytes()).hexdigest()
 
     # 10. eval (final.md is current: step 8 re-validates after every edit, the editor's included) ---------------------
     if not (rd / "eval.md").exists() or (rd / "eval.md").stat().st_mtime < final.stat().st_mtime:
@@ -433,6 +511,10 @@ def next_step(brief_path: str, mode: str | None = None) -> None:
         _quiet(evaluate, rd)
     st["done"]["complete"] = C.now_iso()
     _save_state(rd, st)
+    if brief.get("batch_plan"):
+        from .batch import next_page
+        print(f"PAGE COMPLETE: {R}/final.md")
+        return next_page(brief["batch_plan"], mode, {"id": brief["batch_item"], "result": str(rd / "final.md")})
     print(SEP)
     print("DONE")
     print(SEP)
@@ -482,6 +564,9 @@ def parse_request(text: str) -> dict:
             span = (m.start(), m.end())
     rest = raw
     if span:  # take the client out, with the little words that attach it ("for", "client", ":")
+        protocol = re.search(r"(?:https?://(?:www\.)?|www\.)$", raw[:span[0]], re.I)
+        if protocol:
+            span = (protocol.start(), span[1] + (1 if raw[span[1]:].startswith("/") else 0))
         rest = raw[:span[0]] + " " + raw[span[1]:]
         rest = re.sub(r"(?i)\b(for|client|on|at|by)\s*(?=\s*$|\s*[|:,.\-]|\s+--)", " ", rest)
         rest = re.sub(r"(?i)(^|\s)(for|client)\s*:?\s*$", " ", rest)
@@ -513,28 +598,50 @@ def start(text: str, mode: str | None = None) -> None:
         return next_step(text.strip(), mode)
     except SystemExit:
         pass
+    from .batch import route_request
+    if route_request(text, mode):
+        return
     import re
     # a page address in the request means "this page": decide its type and keyword from the page itself, first
-    um = re.search(r"https?://[^\s\"'<>|]+|(?<![\w@./-])(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}/[^\s\"'<>|]*",
+    um = re.search(r"https?://[^\s\"'<>|]+|(?<![\w@./-])(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}(?:/[^\s\"'<>|]*)?",
                    text, re.I)
     if um:
-        return start_from_page(um.group(0).rstrip(".,;)"), (text[:um.start()] + " " + text[um.end():]), mode)
+        from urllib.parse import urlparse
+        from .sitecontext import website_url
+        address = website_url(um.group(0).rstrip(".,;):"))
+        rest = (text[:um.start()] + " " + text[um.end():]).strip(" :|,")
+        remainder = parse_request(rest)["keyword"]
+        meaningful = re.sub(r"(?i)\b(please|write|rewrite|create|make|content|copy|for|this|the|website|site|page|"
+                            r"homepage|home|client|seo|on|of|and|a|an|can|you)\b", " ", remainder).strip(" :|,")
+        if urlparse(address).path not in ("", "/") or not meaningful:
+            return start_from_page(address, rest, mode)
     req = parse_request(text)
-    if not req["keyword"] or len(req["keyword"].split()) < 2:
-        raise SystemExit("NEED A KEYWORD: type the search query the page should rank for, e.g. "
-                         "/page-seo nutmeg: what is a lifetime isa | for first-time buyers")
-    if not req["client"] and not req["new_domain"] and (C.ROOT / "briefs" / f"{C.slugify(req['keyword'])}.yaml").exists():
-        req["client"] = "__brief__"  # a brief already exists for this keyword and names its client
     if not req["client"] and req["new_domain"]:
-        from .onboard import onboard
-        slug = C.slugify(req["new_domain"].split(".")[0])
-        print(f"NEW CLIENT: building clients/{slug}.yaml from {req['new_domain']} …")
-        _quiet(onboard, slug, req["new_domain"])
-        req["client"] = slug
+        from .sitecontext import client_for_website
+        req["client"] = client_for_website(req["new_domain"], create=True)[0]
     if not req["client"]:
-        raise SystemExit("NEED A CLIENT: say which client the page is for (a name or a domain). Known clients: "
+        from .sitecontext import resolve_client
+        context = resolve_client()
+        if context:
+            req["client"] = context[0]
+            print(f"WEBSITE CONTEXT: {context[1].get('domain')} (from {context[2]})")
+    if not req["client"]:
+        if (C.ROOT / "briefs" / f"{C.slugify(req['keyword'])}.yaml").exists():
+            req["client"] = "__brief__"  # fall back to a named brief only after resolving this project's website
+    if not req["client"]:
+        raise SystemExit("NEED A CLIENT: give the website domain or page link; no unambiguous website context was found. Known clients: "
                          + ", ".join(req["clients"]) + ". Then run the same command again with it, e.g. "
                          f"/page-seo <client>: {req['keyword']}")
+    if not req["keyword"]:
+        raise SystemExit("NEED A KEYWORD: give a search query or the page URL to derive its topic")
+    if req["client"] != "__brief__":
+        from .sitecontext import inventory, match_keyword, keyword_matches
+        known_site = inventory(req["client"])
+        matching_page = match_keyword(req["keyword"], known_site)
+        if matching_page:
+            return start_from_page(matching_page["url"], req["instructions"], mode, target_query=req["keyword"])
+        if keyword_matches(req["keyword"], known_site):
+            raise SystemExit("NEED A PAGE: multiple existing pages match this keyword; give the intended page URL. The website context is already known.")
     slug = C.slugify(req["keyword"])
     path = C.ROOT / "briefs" / f"{slug}.yaml"
     if path.exists() and req["client"] != "__brief__":
@@ -545,12 +652,31 @@ def start(text: str, mode: str | None = None) -> None:
             path = C.ROOT / "briefs" / f"{slug}.yaml"
     if not path.exists():
         from .briefgen import make_brief
-        _quiet(make_brief, req["client"], req["keyword"], slug=slug, instructions=req["instructions"] or None)
+        from .pagetype import infer_type
+        ptype, pwhy = infer_type(req["instructions"], req["keyword"])
+        print(f"PAGE TYPE: {ptype} ({pwhy})")
+        _quiet(make_brief, req["client"], req["keyword"], slug=slug, page_type=ptype,
+               instructions=req["instructions"] or None,
+               page_type_source="explicit" if pwhy.startswith("the request says") else "keyword")
     elif req["instructions"]:
         import yaml
         b = C.load_yaml(path) or {}
         if b.get("instructions") != req["instructions"]:
             b["instructions"] = req["instructions"]
+            from .pagetype import explicit_type
+            requested_type = explicit_type(req["instructions"])
+            if requested_type:
+                from .briefgen import set_page_type
+                profile_path = C.ROOT / "clients" / f"{req['client']}.yaml"
+                set_page_type(b, requested_type, "explicit", C.load_yaml(profile_path) if profile_path.exists() else b)
+            path.write_text(yaml.safe_dump(b, sort_keys=False, allow_unicode=True), encoding="utf-8")
+    if req["client"] != "__brief__":
+        from .sitecontext import inventory, inventory_path
+        known_site = inventory(req["client"])
+        if known_site:
+            import yaml
+            b = C.load_yaml(path)
+            b.update(site_inventory=str(inventory_path(req["client"])), source_context=known_site.get("source_context") or {})
             path.write_text(yaml.safe_dump(b, sort_keys=False, allow_unicode=True), encoding="utf-8")
     from .market import from_text
     said = from_text(text)
@@ -569,27 +695,25 @@ def start(text: str, mode: str | None = None) -> None:
     next_step(brief_path, mode)
 
 
-def start_from_page(url: str, rest: str, mode: str | None = None) -> None:
+def start_from_page(url: str, rest: str, mode: str | None = None, target_query: str | None = None) -> None:
     """/page-seo with a page address: page type first, then the main keyword, then research (WORKFLOW 0)."""
     import re
     import yaml
-    from .domains import org_domain
-    from .pagetype import intake
+    from .pagetype import intake, explicit_type
+    from .sitecontext import client_for_website
     url = url if url.startswith("http") else "https://" + url
-    host = org_domain(url)
-    client = None
-    for p in sorted((C.ROOT / "clients").glob("*.yaml")):
-        prof = C.load_yaml(p) or {}
-        if prof.get("domain") and org_domain("https://" + prof["domain"].removeprefix("www.") + "/") == host:
-            client = p.stem
-            break
-    if not client:
-        from .onboard import onboard
-        client = C.slugify(host.split(".")[0])
-        print(f"NEW CLIENT: building clients/{client}.yaml from {host} …")
-        _quiet(onboard, client, host)
+    client, profile = client_for_website(url, create=True)
     print(f"PAGE INTAKE: reading {url} …")
     info = intake(url)
+    if target_query:
+        info["target_query"] = target_query
+    requested_type = explicit_type(rest)
+    if info.get("status") is not None and not info["exists"] and info.get("status") not in (404, 410) and not (target_query and requested_type):
+        raise SystemExit(f"NEED A PAGE: could not read {url} ({info.get('read_state')}, {info.get('status')}). "
+                         "Give a readable page or a list row with the target keyword and page_type; the website is already known.")
+    if requested_type:
+        info["page_type"] = requested_type
+        info["evidence"].insert(0, "explicit page type in the operator's instructions")
     if not info["target_query"]:
         info["target_query"] = (C.load_yaml(C.ROOT / "clients" / f"{client}.yaml") or {}).get("client", client).lower()
     # what's left of the request is the operator's instructions, without the words that only point at the page
@@ -600,19 +724,41 @@ def start_from_page(url: str, rest: str, mode: str | None = None) -> None:
     instr = re.sub(r"(?i)^\s*(please\s+)?(write|rewrite|create|make|optimi[sz]e|improve|update)?\s*(the\s+)?"
                    r"(seo\s+)?(content|copy|page|article)?\s*(for\s+)?(this\s+)?(client\s+)?(and\s+)?(page\s*)?[:,.-]*\s*", "",
                    instr).strip(" :,.-–|")
-    task = "rewrite" if info["exists"] else "new"
+    task = "rewrite" if info["exists"] or (info.get("status") is not None and info.get("status") not in (404, 410)) else "new"
     seg = [x for x in re.sub(r"https?://[^/]+", "", info["page_url"]).split("/") if x]
     slug = C.slugify(seg[-1] if seg else f"{client}-home")
     path = C.ROOT / "briefs" / f"{slug}.yaml"
+    if path.exists() and C.clean_url((C.load_yaml(path) or {}).get("page_url") or "").rstrip("/") != C.clean_url(info["page_url"]).rstrip("/"):
+        slug = f"{slug}-{client}"
+        path = C.ROOT / "briefs" / f"{slug}.yaml"
+        if path.exists() and C.clean_url((C.load_yaml(path) or {}).get("page_url") or "").rstrip("/") != C.clean_url(info["page_url"]).rstrip("/"):
+            import hashlib
+            slug += "-" + hashlib.sha256(info["page_url"].encode()).hexdigest()[:8]
+            path = C.ROOT / "briefs" / f"{slug}.yaml"
     from .briefgen import make_brief
     if not path.exists():
         _quiet(make_brief, client, info["target_query"], url=info["page_url"], page_type=info["page_type"], task=task,
-               slug=slug, instructions=instr or None)
+               slug=slug, instructions=instr or None, page_type_source="explicit" if requested_type else "page")
     b = C.load_yaml(path) or {}
-    b.update({"page_url": info["page_url"], "page_type": info["page_type"], "task": task,
+    previous_intake = b.get("page_intake") or {}
+    # A saved operator override wins over inference from the live page.
+    chosen_type = requested_type or (b.get("page_type") if b.get("page_type_source") == "explicit" else None) or info["page_type"]
+    from .briefgen import set_page_type
+    set_page_type(b, chosen_type, "explicit" if requested_type or b.get("page_type_source") == "explicit" else "page")
+    b.update({"page_url": info["page_url"], "task": task,
               "page_intake": {"type": info["page_type"], "keyword_from": "H1" if info["h1"] else "address",
                               "evidence": info["evidence"]}})
-    b.setdefault("target_query", info["target_query"])
+    old_leaf = " ".join(seg[-1].replace("-", " ").split()) if seg else ""
+    legacy_leaf = previous_intake.get("keyword_from") == "address" and b.get("target_query") == old_leaf
+    if not b.get("target_query") or b.get("target_query") == previous_intake.get("inferred_query") or legacy_leaf:
+        b["target_query"] = info["target_query"]
+    b["page_intake"]["inferred_query"] = info["target_query"]
+    if target_query:
+        b["target_query"] = target_query
+    from .sitecontext import inventory, inventory_path
+    known_site = inventory(client)
+    if known_site:
+        b.update(site_inventory=str(inventory_path(client)), source_context=known_site.get("source_context") or {})
     if instr:
         b["instructions"] = instr
     from .market import from_text
@@ -624,7 +770,7 @@ def start_from_page(url: str, rest: str, mode: str | None = None) -> None:
                                               if info.get("locale") else "the client profile"))
     path.write_text(yaml.safe_dump(b, sort_keys=False, allow_unicode=True), encoding="utf-8")
     brief_path = f"briefs/{slug}.yaml"
-    print(f"PAGE TYPE: {info['page_type']} ({'; '.join(info['evidence'][:4])})")
+    print(f"PAGE TYPE: {chosen_type} ({'; '.join(info['evidence'][:4])})")
     print(f"MAIN KEYWORD: \"{b['target_query']}\" (from the page's {'H1' if info['h1'] else 'address'}; change "
           f"`target_query` in {brief_path} to override)")
     print(f"TASK: {task} ({'the page exists' if info['exists'] else 'no live page at that address'})")
@@ -693,7 +839,7 @@ def doctor() -> bool:
     except Exception as e:
         blocked = "Application Control" in str(e) or "DLL load failed" in str(e)
         line(False, "spaCy unavailable" + (" (Windows Application Control is blocking its compiled library)" if blocked
-                                          else "") + ": runs with plain-rules tokens, no entity graph",
+                                          else "") + ": semantic extraction runs with plain rules; entity types are less precise",
              "allow Python packages in Windows Security (Smart App Control) if you want spaCy back" if blocked else
              f"{PY()} -m spacy download en_core_web_sm", hard=False)
     from . import serper, spider
