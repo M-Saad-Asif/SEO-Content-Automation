@@ -87,14 +87,15 @@ def _run_one(m: dict, ctx: Ctx) -> tuple[str, dict, float]:
     return m["name"], res, time.time() - t0
 
 
-def run_research(brief_path: str, mode: str = "deep", refresh: bool = False) -> Path:
+def run_research(brief_path: str, mode: str = "deep", refresh: bool = False, mark_start: bool = True) -> Path:
     from .prep import load_brief, run_dir
     from .timing import mark
     brief = load_brief(brief_path)
     mode = "deep"  # one mode: every research plugin, every run
     rd = run_dir(brief)
     rd.mkdir(parents=True, exist_ok=True)
-    mark(rd, "prep", "start", fresh=True)
+    if mark_start:  # a background run was marked by `next` when it started it
+        mark(rd, "prep", "start", fresh=True)
     ctx = Ctx(brief, rd, mode, refresh)
     ms = {n: m for n, m in manifests().items() if applies(m, brief, mode)}
     done, times = _run_waves(ms, ctx)

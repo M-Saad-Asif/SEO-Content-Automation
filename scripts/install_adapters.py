@@ -46,7 +46,7 @@ The request is {args}: a keyword with optional client/instructions, a domain or 
 4. If a command fails (error, traceback, missing package or key), run `{SEO} doctor`, apply the `fix:` line it prints once, and run `next` again. If it still fails, stop and show the error.
 5. Read the output of every `next` and go back to 2.
 
-When a task says writers work in parallel, start the `seo-writer` sub-agent once per part, all at the same time, in one turn (Claude Code: the Agent tool; Cursor: its subagents; Codex: spawn one `seo_writer` agent per part and wait for all; Antigravity and Gemini CLI: invoke the `seo-writer` subagent once per part; Copilot: the agent tool with `seo-writer`). A tool that cannot run sub-agents writes the parts itself, one after another. Any other task naming a role: give it to a sub-agent if your tool can start one, otherwise do it yourself as a separate pass.
+When a task says writers work in parallel, start the `seo-writer` sub-agent once per part, all at the same time, in one turn (Claude Code: the Agent tool; Cursor: its subagents; Codex: spawn one `seo_writer` agent per part and wait for all; Antigravity and Gemini CLI: invoke the `seo-writer` subagent once per part; Copilot: the agent tool with `seo-writer`). A tool that cannot run sub-agents writes the parts itself, one after another. When a task says researchers work at the same time, start the `seo-gain-researcher` sub-agent (Codex: `seo_gain_researcher`) once per letter in the same way; a tool without sub-agents does each in turn with its own web search. Any other task naming a role: give it to a sub-agent if your tool can start one, otherwise do it yourself as a separate pass.
 
 Never: edit anything in the pipeline's `scripts/`, `plugins/`, `RULES.md`, `WORKFLOW.md`, `clients/` or the brief; open other runs or backup folders; run `seo.py` commands the task did not print; run `done` for a task you have not finished; ask the user anything mid-run.
 """
@@ -56,32 +56,49 @@ WRITER_DESC = ("Writer of the page-SEO pipeline: drafts one part of a page plan 
                "exactly as the task from `seo.py next` says. Several run at once, one per part of the plan.")
 
 
-def writer_prompt() -> str:
-    """The writer's instructions, the same in every tool (from .claude/agents/seo-writer.md, the source of truth)."""
-    src = (ROOT / ".claude" / "agents" / "seo-writer.md").read_text(encoding="utf-8")
+RESEARCHER_DESC = ("Information-gain researcher of the page-SEO pipeline: while the research scripts run, finds what page "
+                   "one doesn't have with the tool's own web search and writes gain_<X>.yaml. Two run at once (A, B).")
+
+
+def agent_prompt(name: str = "seo-writer") -> str:
+    """A role's instructions, the same in every tool (from .claude/agents/<name>.md, the source of truth)."""
+    src = (ROOT / ".claude" / "agents" / f"{name}.md").read_text(encoding="utf-8")
     body_ = src.split("---", 2)[2].strip() if src.startswith("---") else src.strip()
     return body_ + f"\n\nThe pipeline lives in `{ROOT.as_posix()}`; paths in the task are relative to it.\n"
 
 
+def writer_prompt() -> str:
+    return agent_prompt("seo-writer")
+
+
+def _agents(name: str, desc: str, ag_tools: list | None, copilot_tools: list) -> dict[str, list[tuple[Path, str]]]:
+    """One role as a sub-agent in each tool's own format, with identical instructions."""
+    prompt = agent_prompt(name)
+    md = lambda front: "---\n" + "\n".join(f"{k}: {json.dumps(v)}" for k, v in front.items()) + "\n---\n\n" + prompt
+    snake = name.replace("-", "_")
+    ag = {"name": name, "description": desc, **({"tools": ag_tools} if ag_tools else {}),
+          "mainAgent": False, "subagent": True, "model": "inherit"}
+    return {
+        "cursor": [(HOME / ".cursor" / "agents" / f"{name}.md", md({"name": name, "description": desc}))],
+        "codex": [(HOME / ".codex" / "agents" / f"{snake}.toml",
+                   f'name = "{snake}"\ndescription = {json.dumps(desc)}\ndeveloper_instructions = """\n{prompt}"""\n')],
+        "antigravity": [(HOME / ".gemini" / "config" / "agents" / f"{name}.md", md(ag))],
+        "gemini": [(HOME / ".gemini" / "agents" / f"{name}.md", md({"name": name, "description": desc, "kind": "local"}))],
+        "copilot": [(HOME / ".copilot" / "agents" / f"{name}.agent.md",
+                     md({"name": name, "description": desc, "tools": copilot_tools}))],
+    }
+
+
 def writer_agents(appdata: Path) -> dict[str, list[tuple[Path, str]]]:
     """The writer as a sub-agent in each tool that can run sub-agents in parallel."""
-    md = lambda front: "---\n" + "\n".join(f"{k}: {json.dumps(v)}"
-                                            for k, v in front.items()) + "\n---\n\n" + writer_prompt()
-    toml = (f'name = "seo_writer"\ndescription = {json.dumps(WRITER_DESC)}\n'
-            f'developer_instructions = """\n{writer_prompt()}"""\n')
-    return {
-        "cursor": [(HOME / ".cursor" / "agents" / "seo-writer.md",
-                    md({"name": "seo-writer", "description": WRITER_DESC}))],
-        "codex": [(HOME / ".codex" / "agents" / "seo_writer.toml", toml)],
-        "antigravity": [(HOME / ".gemini" / "config" / "agents" / "seo-writer.md",
-                         md({"name": "seo-writer", "description": WRITER_DESC,
-                             "tools": ["view_file", "write_to_file", "replace_file_content", "list_dir"],
-                             "mainAgent": False, "subagent": True, "model": "inherit"}))],
-        "gemini": [(HOME / ".gemini" / "agents" / "seo-writer.md",
-                    md({"name": "seo-writer", "description": WRITER_DESC, "kind": "local"}))],
-        "copilot": [(HOME / ".copilot" / "agents" / "seo-writer.agent.md",
-                     md({"name": "seo-writer", "description": WRITER_DESC, "tools": ["read", "edit", "search"]}))],
-    }
+    return _agents("seo-writer", WRITER_DESC, ["view_file", "write_to_file", "replace_file_content", "list_dir"],
+                   ["read", "edit", "search"])
+
+
+def researcher_agents(appdata: Path) -> dict[str, list[tuple[Path, str]]]:
+    """The information-gain researcher (web search + one file write) in each tool; tools left to each tool's
+    defaults where a tool names its web tools differently."""
+    return _agents("seo-gain-researcher", RESEARCHER_DESC, None, ["read", "edit", "web"])
 
 
 def md_with_front(front: dict, args: str) -> str:
@@ -119,8 +136,9 @@ def targets() -> dict[str, list[tuple[Path, str]]]:
         "copilot": [(appdata / "Code" / "User" / "prompts" / "page-seo.prompt.md",
                      md_with_front({"description": DESC, "mode": "agent"}, "the text the user typed after `/page-seo`"))],
     }
-    for tool, items in writer_agents(appdata).items():
-        out[tool] = out.get(tool, []) + items
+    for agents in (writer_agents(appdata), researcher_agents(appdata)):
+        for tool, items in agents.items():
+            out[tool] = out.get(tool, []) + items
     return out
 
 

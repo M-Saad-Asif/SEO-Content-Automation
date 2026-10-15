@@ -66,6 +66,12 @@ doesn't cover; none of them contradicts his).
 | "Don't open a section by restating its heading" | Answer in the heading's own terms, with the answer itself (H08 fires only on a bare restatement) |
 | Site-profile skill: 15–20 average | 12–18 average |
 
+## 3b. Operator's exception: the author's view
+
+Koray's text says to avoid opinion-based statements. The operator decided (16 Oct 2026) that every page also gives its author's own view in the first person, 2-3 times (1-2 on a page under 800 words), in the top and middle of the page. Koray's rules still govern those passages where they can: no hedges ("might", "perhaps"), a firm position, reasons from the facts. Only first-person judgement is exempt from K11 ("I think", "I'd recommend"); "we recommend" still blocks. Checks: V01-author-view-count, V02-view-placement (not in the opening, not after 70% of the page or in the last H2 section), V03-claimed-experience (no "I tested", "in my experience", "my clients" unless the client's `experience:` notes say so).
+
+Information gain and GEO evidence (no Koray equivalent; both agree with his source-before-claim and entity rules): IG01-no-information-gain (the researchers' items beyond page one are used), G02-few-citations (at least 3 outside sources cited when the brief has them), G03-no-quotation (1-2 exact quotes), G04-misquote (a quotation is the source's exact words).
+
 ## 4. Pipeline rules with no Koray equivalent (kept; none contradicts him)
 
 | Group | What it covers | Lint IDs |
@@ -76,12 +82,13 @@ doesn't cover; none of them contradicts his).
 | Locale (RULES §1.13, §4) | the market's spelling, units, currency, authorities | L01–L03 |
 | Voice and style (RULES §3–5) | named actors, no trailing ", making it…", no vague "This", no framework labels, no banned words, em-dash and exclamation limits | S03–S07, E01–E09, H01–H06, H09–H11, X01–X05, I01, R01 |
 | Coverage (RULES §8) | query in title and opening, secondary queries, planned questions answered, entities | K01–K02, Q01–Q05, W01, M01–M02 |
+| Author's view, information gain, GEO evidence (RULES §2) | 2-3 first-person views, top and middle, no claimed experience; items beyond page one used; sources cited and quoted exactly | V01–V03, IG01, G02–G04 |
 | Humanization (RULES §5, `plugins/humanize/SKILL.md`) | the University of Maryland / Google DeepMind findings: specific, sourced, limited ideas; no perfect solutions, unconditional forecasts, unnamed experts, made-up examples, stated lessons or circular reasons | HU01–HU08 |
 
 Humanization agrees with Koray throughout: his certainty-with-condition, numeric values, examples after plural nouns
 and specific entities are the same signals the research found in human writing.
 
-## 5. Every lint rule (128), by group
+## 5. Every lint rule (135), by group
 
 - **Page job / client**: P01-brand-late, P01-person-drift, P02-no-client-next-step, P02-no-closing-step, P03-steers-elsewhere, P04-warns-off-client, P05-another-sites-page, C01-banned-claim, C01-client-mention, C01-unapproved-claim, C02-client-positioning
 - **Accuracy**: A01-absolute, A02-boundary, A03-answer-not-self-contained, C03-copied-text, G01-ungrounded-rule, N01-untraced-number, N02-hardcoded-price, N03-unsupported-superlative, N04-count-check, T01-check-date, T01-placeholder, T02-unlinked-portal, T03-table-without-source
@@ -91,6 +98,7 @@ and specific entities are the same signals the research found in human writing.
 - **Sentences and style**: S01-long-sentence, S02-snippet-length, S03-opener, S04-trailing-ing, S05-vague-opener, S06-noun-stack, S07-nominalisation, E01-em-dash, E02-exclamation, E03-rhythm, E04-fragments, E05-opener-monotony, E06-repeated-point, E07-closing-template, E08-bare-yes-no, E08-yes-no-template, E09-fragment-bullets, H01-contrast-framing, H02-self-answered-question, H03-colon-reveal, H04-punchline-closers, H05-meta-commentary, H07-attribution-density, H09-embedded-query, H10-teaser, X01-banned-phrase, X01-known-failure, X02-limited-phrase, X03-framework-label, X04-repeated-opener, X05-bold-label-bullets, I01-internal-code
 - **Locale**: L01-locale-spelling, L02-dimension-symbol, L03-locale-units
 - **Links**: U01-url-not-in-link-map, U02-redirecting-url, U03-product-to-collection, U04-bare-url, U05-repeated-link, U06-hub-no-children, U07-url-linked-twice, U08-link-context, U09-link-density, U10-link-closer, U11-long-anchor, U12-unlinked-forum-quote, U13-links-replaced-page, U14-commercial-first-link, U15-tracking-parameter, U16-competitor-prominence, U17-link-not-figure-source, U18-named-source-unlinked, U20-inherited-attribution, U21-empty-anchor, U22-anchor-repeated, U23-anchor-two-targets, U24-link-in-answer-sentence
+- **Author's view, information gain, GEO**: V01-author-view-count, V02-view-placement, V03-claimed-experience, IG01-no-information-gain, G02-few-citations, G03-no-quotation, G04-misquote
 - **Humanization**: HU01-could-be-any-page, HU02-perfect-solution, HU03-unconditional-forecast, HU04-vague-authority, HU05-made-up-example, HU06-stated-lesson, HU07-circular-reason, HU08-no-limits
 
 ## Calibration (16 Oct 2026, the 15 finished pages in runs/)

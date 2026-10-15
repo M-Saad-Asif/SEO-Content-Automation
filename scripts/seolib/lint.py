@@ -403,6 +403,12 @@ class Linter:
             elif b["type"].startswith("h") and include_headings:
                 yield b, b["text"]
 
+    def r_voice(self):
+        """The author's first-person view (2-3 passages, top and middle, no invented experience), information gain
+        and the GEO evidence checks (citations, quotations): seolib/voice.py."""
+        from .voice import check
+        check(self)
+
     def r_humanize(self):
         """What separates human from AI writing in the University of Maryland / Google DeepMind research
         (StoryScope, IdeaLens): seolib/humanize.py."""
@@ -486,7 +492,7 @@ class Linter:
                          "the verified service value nearby and consolidate duplicate disclosures")
 
     def run(self) -> list[dict]:
-        for fn in (self.r_page_job, self.r_koray_rules, self.r_humanize, self.r_length, self.r_snippet, self.r_openers, self.r_trailing_ing, self.r_vague,
+        for fn in (self.r_page_job, self.r_koray_rules, self.r_humanize, self.r_voice, self.r_length, self.r_snippet, self.r_openers, self.r_trailing_ing, self.r_vague,
                    self.r_noun_stack, self.r_nominal, self.r_person, self.r_locale, self.r_times,
                    self.r_lexicon, self.r_tells, self.r_labels, self.r_signposts, self.r_bold_bullets, self.r_numbers,
                    self.r_links, self.r_tables, self.r_absolutes, self.r_client, self.r_codes,
@@ -1371,7 +1377,7 @@ class Linter:
                 self.add("K10-hedge", "block", b, s, f"\"{m.group(0)}\" hedges (Koray rule 2: be certain)",
                          "state it as a fact with its condition, or as an instruction (\"Do X if Y\")")
             m = self.OPINION.search(plain)
-            if m:
+            if m and not re.match(r"(?i)(i\b|i'd\b|in my\b)", m.group(0)):  # the author's own view is allowed (voice.py)
                 self.add("K11-opinion", "block", b, s, f"\"{m.group(0)}\" is opinion phrasing (Koray rule 2)",
                          "state the decision rule as a fact: \"<option> suits <case>\"")
             m = self.VAGUE.search(plain)

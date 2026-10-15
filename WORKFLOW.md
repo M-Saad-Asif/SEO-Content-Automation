@@ -10,8 +10,8 @@ You are the writer. Plugins (in `plugins/`) do the research and the checks. Run 
 
 | # | Step | Who | Target |
 |---|---|---|---|
-| 1 | Research: every script plugin, including `serp_facts` (the page-one fact table, disagreements settled by majority) | script | ≤ 45 s |
-| 2 | The page plan (`seolib/plan.py`): every heading and question the top 10 cover, merged, one H2 per searcher question, facts and links per heading, split into parts; written into `write_brief.md` | script | seconds |
+| 1 | Research: every script plugin, including `serp_facts` (the page-one fact table, disagreements settled by majority), in the background; meanwhile two `seo-gain-researcher` agents find what page one lacks with the tool's own web search (A people's experiences and opinions, B studies, tests, statistics, changes, costs) and write `gain_<X>.yaml` | script + researchers | ≤ 90 s together |
+| 2 | Quotes checked against their pages, page-one repeats and competitors dropped (`seolib/gain.py`); the page plan (`seolib/plan.py`): every heading and question the top 10 cover, merged, one H2 per searcher question, facts, gain items, 1-2 exact-quote slots and 2-3 "your view" headings (top and middle), links per heading, split into parts; written into `write_brief.md` | script | ≤ 15 s |
 | 3 | Draft: the plan's parts written at the same time by parallel writers (one writer in tools that can't run agents in parallel); `next` joins them | writers | ≤ 2½ min |
 | 4 | One combined check: planned headings missing, lint blocks, claims no fact carries | script → writer | ≤ 60 s, at most two rounds |
 | 5 | Validate (re-lint, live links), eval | script | ≤ 15 s |

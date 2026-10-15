@@ -53,6 +53,7 @@ def main(argv=None) -> int:
     p.add_argument("brief")
     p.add_argument("--mode", choices=["full", "fast", "deep", "quick"], default=None, help=argparse.SUPPRESS)
     p.add_argument("--refresh", action="store_true")
+    p.add_argument("--background", action="store_true", help=argparse.SUPPRESS)
     p = sub.add_parser("outline")
     p.add_argument("run")
     sub.add_parser("plugins")
@@ -182,6 +183,9 @@ def main(argv=None) -> int:
         prep(a.brief, a.refresh)
         return 0
     if a.cmd == "research":
+        if a.background:  # started by `next` while the information-gain researchers work
+            from seolib.driver import research_background_main
+            return research_background_main(a.brief)
         from seolib.harness import run_research
         run_research(a.brief, a.mode, a.refresh)
         return 0

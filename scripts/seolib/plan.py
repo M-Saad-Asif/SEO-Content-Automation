@@ -203,6 +203,27 @@ def build(rd: Path) -> dict:
         best["facts"].append(f["id"])
         used.add(f["id"])
 
+    # information gain: every item beyond page one goes under the heading it fits (it's why the page is worth reading)
+    for f, ft in ftok:
+        if str(f["id"]).startswith("gain:") and f["id"] not in used and heads:
+            best = max(heads, key=lambda h: len(ft & (own(h["title"]) | set().union(*(own(x["title"]) for x in h["subs"])))))
+            best["facts"].append(f["id"])
+            used.add(f["id"])
+    for h in heads:
+        h["gain"] = [i for i in h["facts"] if str(i).startswith("gain:")]
+    # quotations (GEO: quotes, statistics and cited sources raise visibility in AI answers): 1-2 exact quotes
+    byid = {f["id"]: f for f in facts}
+    picked, hosts = 0, set()
+    for f in quote_candidates(facts):
+        h = next((x for x in heads if f["id"] in x["facts"] and not x.get("quote")), None)
+        host = (f.get("source_url") or "").split("/")[2:3]
+        if h is None or picked >= 2 or tuple(host) in hosts:
+            continue
+        h["quote"], picked = f["id"], picked + 1
+        hosts.add(tuple(host))
+    # the author's view: 2-3 first-person passages in the top and middle of the page, where the reader decides
+    mark_views(heads, byid)
+
     # 5. internal links: each client page goes to the heading its title fits
     rel = lm.get("client_related") or {}
     titles = lm.get("client_titles") or {}
@@ -241,6 +262,57 @@ def build(rd: Path) -> dict:
     return plan
 
 
+DECIDE = re.compile(r"(?i)\b(which|best|vs\.?|versus|or|better|worth|choose|choosing|should|compare|comparison|cost|"
+                    r"costs|price|cheap|types?|methods?|ways?|options?|pros|cons|difference|mistakes?|avoid|right|"
+                    r"recommended|how to|when to|tips?)\b")
+VIEW_SHARE = 0.7  # views sit in the top and middle of the page, never in its last part (operator's rule)
+
+
+def view_count(n_heads: int) -> int:
+    return 3 if n_heads >= 7 else 2 if n_heads >= 3 else 1
+
+
+def mark_views(heads: list[dict], byid: dict) -> None:
+    """Mark the headings where the author gives a view: where the reader decides, in the first 70% of the page,
+    spread out. Gain items that are experiences or opinions make a heading a better place for one."""
+    for h in heads:
+        h.pop("view", None)
+    ok = [i for i, h in enumerate(heads) if h["kind"] not in ("offer", "cta") and (i + 1) / len(heads) <= VIEW_SHARE]
+    if not ok and heads:
+        ok = [i for i, h in enumerate(heads) if h["kind"] not in ("offer", "cta")][:1]
+
+    def score(i):
+        h = heads[i]
+        text = " ".join([h["title"]] + [x["title"] for x in h["subs"]] + h["questions"])
+        s = len(DECIDE.findall(text)) + 2 * sum(1 for g in h.get("gain", []) if (byid.get(g) or {}).get("kind")
+                                                 in ("experience", "opinion")) + 0.5 * len(h.get("facts", []))
+        return s - (1 if i == 0 else 0)
+    chosen = []
+    for i in sorted(ok, key=score, reverse=True):
+        if len(chosen) >= view_count(len(heads)):
+            break
+        if any(abs(i - j) < 2 for j in chosen) and len(ok) >= 2 * view_count(len(heads)):
+            continue  # spread them out when the page has room
+        chosen.append(i)
+    for i in chosen:
+        heads[i]["view"] = True
+
+
+def quote_candidates(facts: list[dict]) -> list[dict]:
+    """Facts whose exact words can be quoted: an authority's rule or figure, or a quote-checked item beyond page one,
+    8-40 words, with a source page. Rules and figures first."""
+    out = []
+    for f in facts:
+        v = str(f.get("value") or "")
+        if f.get("status") != "verified" or not f.get("source_url") or f.get("basis") == "client_page" \
+                or str(f.get("id", "")).startswith(("offer:", "client", "serp:")):
+            continue
+        if 8 <= len(v.split()) <= 40 and not re.search(r"[|\n]", v):
+            out.append(f)
+    return sorted(out, key=lambda f: (not re.search(r"(?i)\b(must|should|never|at least|recommend|law|legal|\d)", str(f["value"])),
+                                      not str(f["id"]).startswith("gain:")))
+
+
 def render(plan: dict, facts_by_id: dict) -> list[str]:
     """The plan as the writer reads it."""
     L = [f"H1: {plan['h1']}",
@@ -261,8 +333,19 @@ def render(plan: dict, facts_by_id: dict) -> list[str]:
                 L.append("   also answer, in these words: " + "; ".join(f"\"{q}\"" for q in h["questions"][:6]))
             for s in h["subs"]:
                 L.append(f"   ### {s['title']}" + (f" — also: " + "; ".join(s["questions"][:3]) if s["questions"] else ""))
-            if h.get("facts"):
-                L.append("   facts: " + ", ".join(f"`{i}`" for i in h["facts"]))
+            plain = [i for i in h.get("facts", []) if not str(i).startswith("gain:")]
+            if plain:
+                L.append("   facts: " + ", ".join(f"`{i}`" for i in plain))
+            if h.get("gain"):
+                L.append("   beyond page one: " + ", ".join(f"`{i}`" for i in h["gain"])
+                         + " — use each here, crediting who says it, and link it")
+            if h.get("quote"):
+                L.append(f"   quote: `{h['quote']}` — its exact words (section 3) in quotation marks, the source named "
+                         "and linked in the same sentence")
+            if h.get("view"):
+                L.append("   your view (first person \"I\", 2-4 sentences inside this section, not its first sentence): "
+                         "what you'd pick or do and why, from the facts and experiences here, and when you'd choose "
+                         "differently. A real opinion, stated firmly; never a claim that you used, tried or saw it")
             if h.get("links"):
                 L.append("   link: " + ", ".join(h["links"][:2]))
     return L

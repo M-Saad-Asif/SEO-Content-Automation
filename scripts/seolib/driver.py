@@ -62,6 +62,111 @@ def _save_state(rd: Path, st: dict) -> None:
     C.save_json(rd / "state.json", st)
 
 
+def _alive(pid) -> bool:
+    import os
+    if not pid:
+        return False
+    if os.name == "nt":
+        import ctypes
+        k = ctypes.windll.kernel32
+        h = k.OpenProcess(0x1000, False, int(pid))  # PROCESS_QUERY_LIMITED_INFORMATION
+        if not h:
+            return False
+        code = ctypes.c_ulong()
+        ok = k.GetExitCodeProcess(h, ctypes.byref(code))
+        k.CloseHandle(h)
+        return bool(ok) and code.value == 259  # STILL_ACTIVE
+    try:
+        os.kill(int(pid), 0)
+        return True
+    except OSError:
+        return False
+
+
+def _research_in_background(rd: Path, brief_path: str) -> bool:
+    """Start the research scripts as their own process, so the information-gain researchers work while they run.
+    False when the process can't start (the scripts then run in the foreground on the next `next`)."""
+    import os
+    import subprocess
+    import sys
+    import time
+    from .timing import mark
+    mark(rd, "prep", "start", fresh=True)
+    cmd = [sys.executable, str(C.ROOT / "scripts" / "seo.py"), "research", str(Path(brief_path).resolve()), "--background"]
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
+    log = open(rd / "research_log.txt", "w", encoding="utf-8")
+    kw = {"stdout": log, "stderr": subprocess.STDOUT, "stdin": subprocess.DEVNULL, "cwd": str(C.ROOT), "env": env}
+    flags = [0]
+    if os.name == "nt":  # its own process group, outside the shell's job where allowed, so it outlives this command
+        base = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
+        flags = [base | 0x01000000, base]  # CREATE_BREAKAWAY_FROM_JOB first
+    else:
+        kw["start_new_session"] = True
+    p = None
+    for f in flags:
+        try:
+            p = subprocess.Popen(cmd, creationflags=f, **kw) if os.name == "nt" else subprocess.Popen(cmd, **kw)
+            break
+        except OSError:
+            continue
+    log.close()
+    if p is None:
+        return False
+    C.save_json(rd / "research_bg.json", {"pid": p.pid, "state": "running", "started": time.time()})
+    return True
+
+
+def research_background_main(brief_path: str) -> int:
+    """`seo.py research <brief> --background`: the scripts, with their outcome recorded for `next`."""
+    import time
+    import traceback
+    from .harness import run_research
+    from .prep import load_brief, run_dir
+    rd = run_dir(load_brief(brief_path))
+    p = rd / "research_bg.json"
+    try:
+        run_research(brief_path, "deep", mark_start=False)
+        C.save_json(p, {**(C.load_json(p) or {}), "state": "done", "ended": time.time()})
+        return 0
+    except BaseException as e:  # noqa: BLE001 - recorded for `next`, which then runs the scripts itself
+        C.save_json(p, {**(C.load_json(p) or {}), "state": "failed", "ended": time.time(),
+                        "error": f"{type(e).__name__}: {e}", "trace": traceback.format_exc()[-2000:]})
+        return 1
+
+
+def _wait_background(rd: Path, limit: float = 240) -> bool:
+    """True when the background research finished; False when there is none, it failed or it died (the caller then
+    runs the scripts itself). A run past the limit is stopped first, so two never write the same files."""
+    import os
+    import time
+    p = rd / "research_bg.json"
+    if not (C.load_json(p) or {}).get("pid"):
+        return False
+    t0, shown = time.time(), False
+    while True:
+        info = C.load_json(p) or {}
+        if info.get("state") in ("done", "failed"):
+            return info["state"] == "done"
+        if not _alive(info.get("pid")):
+            time.sleep(0.5)
+            return (C.load_json(p) or {}).get("state") == "done"
+        if time.time() - t0 > limit:
+            try:
+                if os.name == "nt":
+                    import subprocess
+                    subprocess.run(["taskkill", "/F", "/T", "/PID", str(info["pid"])], capture_output=True)
+                else:
+                    os.kill(int(info["pid"]), 9)
+            except OSError:
+                pass
+            C.save_json(p, {**info, "state": "failed", "error": "timed out"})
+            return False
+        if not shown:
+            print("Waiting for the research scripts to finish…")
+            shown = True
+        time.sleep(1)
+
+
 def _end_agent_stage(rd: Path, st: dict) -> None:
     active = st.pop("active_stage", None)
     if active:
@@ -235,13 +340,13 @@ def _rounds(rd: Path, st: dict, key: str, cap: int, R: str, brief_path: str, lef
     return True
 
 
-def _task(title: str, lines: list[str], brief_path: str, confirm: str | None = None) -> None:
+def _task(title: str, lines: list[str], brief_path: str, confirm: str | None = None, stage: str | None = None) -> None:
     from .prep import load_brief
     from .timing import mark
     rd = _current_run(load_brief(brief_path))
     if rd:
         st = _state(rd)
-        stage = confirm or ("outline" if "OUTLINE" in title else "draft" if title.startswith("DRAFT") else "fix")
+        stage = stage or confirm or ("outline" if "OUTLINE" in title else "draft" if title.startswith("DRAFT") else "fix")
         if st.get("active_stage") != stage:
             _end_agent_stage(rd, st)
             mark(rd, "agent:" + stage, "start")
@@ -269,15 +374,39 @@ def next_step(brief_path: str, mode: str | None = None) -> None:
     brief = load_brief(brief_path)  # exits with BRIEF NOT FOUND / BRIEF INVALID
     rel = lambda p: Path(p).resolve().relative_to(C.ROOT.resolve()).as_posix()
 
-    # 1. research (scripts) -------------------------------------------------------------------------------------
+    # 1. research: the scripts in the background while researchers find what page one lacks -------------------
     rd = _current_run(brief)
     if rd is None or not (rd / "research_plan.md").exists() or not (rd / "writer_pack.md").exists():
-        print(f"RUNNING: research for \"{brief['target_query']}\" (scripts, about a minute)…")
-        from .harness import run_research
-        # the scripts' own console notes ("next: write outline.md…") are for manual runs; here `next` decides
-        rd, log = _quiet(run_research, brief_path, "deep")  # one mode: every research plugin, every run
-        (rd / "research_log.txt").write_text(log, encoding="utf-8")
+        from .prep import run_dir
+        rd = run_dir(brief)
+        rd.mkdir(parents=True, exist_ok=True)
+        st = _state(rd)
+        if not st.get("gain_asked"):
+            started = _research_in_background(rd, brief_path)
+            st["gain_asked"], st["mode"] = C.now_iso(), "full"
+            _save_state(rd, st)
+            from .gain import task_lines
+            lines = task_lines(brief, rel(rd))
+            if not started:
+                lines[1] = "Find what page one doesn't have (information gain); the research scripts run after this."
+            _task("RESEARCH BEYOND PAGE ONE (role: researchers, at the same time)", lines, brief_path, stage="gain")
+            return
+        _end_agent_stage(rd, st)
+        from .gain import files as gain_files, verify as gain_verify
+        if gain_files(rd) and not (rd / "research" / "gain.json").exists():
+            print("Checking the researchers' quotes against their pages…")
+            _quiet(gain_verify, rd)  # while the scripts finish; touches nothing they write
+        if not _wait_background(rd):
+            print(f"RUNNING: research for \"{brief['target_query']}\" (scripts, about a minute)…")
+            from .harness import run_research
+            # the scripts' own console notes ("next: write outline.md…") are for manual runs; here `next` decides
+            rd, log = _quiet(run_research, brief_path, "deep")  # one mode: every research plugin, every run
+            (rd / "research_log.txt").write_text(log, encoding="utf-8")
         print(f"Research scripts finished (log: {rel(rd)}/research_log.txt).")
+        from .gain import register as gain_register
+        n = len(gain_register(rd))
+        if gain_files(rd):
+            print(f"Information gain: {n} item(s) beyond page one kept.")
         st = _state(rd)
         st["mode"] = "full"
         _save_state(rd, st)
@@ -626,7 +755,8 @@ def _next_flow(brief: dict, brief_path: str, rd: Path, st: dict, R: str, mode: s
                     "- A tool without sub-agents (e.g. Windsurf): write the parts yourself, one after another.",
                     "",
                     "Instructions for the writer of part X:",
-                    f"1. Read RULES_CARD.md and {R}/write_brief.md: sections 1, 3 and 4, and part X of section 2. Nothing else.",
+                    f"1. Read RULES_CARD.md and {R}/write_brief.md: sections 1, 3, 4 (and 5 if it has one), and part X of section 2. "
+                    "Nothing else.",
                     f"2. Write {R}/draft_part_X.md with a single write: only part X's headings, in the plan's order (H2s "
                     "and their H3s, Markdown only). Part A also starts with the front matter (title, meta_description), "
                     "the H1 and the opening.",

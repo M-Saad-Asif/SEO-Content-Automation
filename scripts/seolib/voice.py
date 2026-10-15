@@ -1,0 +1,139 @@
+"""The author's view, information gain and the GEO evidence checks.
+
+- The author's view (operator's rule, 16 Oct 2026): every page gives its author's own take in the first person, 2-3
+  times (1-2 on a short page), in the top and middle of the page, never in the opening or its last part. A view is
+  judgement from what the author knows ("I'd pick X for Y because Z"); it never claims first-hand experience the
+  pipeline doesn't have ("I tested", "in my experience", "my clients"), unless the client's own experience notes say it.
+- Information gain: the items the researchers found beyond page one are used (Google's information-gain patent,
+  US 12,013,887; its helpful-content questions on original information and analysis).
+- GEO (Aggarwal et al., arXiv 2311.09735): cited sources, quotations and statistics raised a page's visibility in AI
+  answers by up to 40%. The page cites the sources it has, quotes 1-2 of them word for word, and every quote is exact.
+"""
+from __future__ import annotations
+
+import re
+
+FIRST = re.compile(r"\bI\b|\bI'(?:d|m|ve|ll)\b|\b[Mm]y\b|\bme\b")
+EXPERIENCE = re.compile(
+    r"\bI(?:'ve| have)? (?:tried|tested|used|bought|owned|installed|fitted|painted|visited|grown|planted|driven|ridden|"
+    r"cooked|worn|repaired|fixed|built|treated|advised|handled|trialled|reviewed|run|managed)\b|"
+    r"\bwhen I (?:was|did|had|tried|used|first|started|bought|painted|fixed)\b|"
+    r"(?i:\bin (?:my|our) (?:own )?(?:experience|years|time|career|practice|tests?)\b)|"
+    r"\bI've (?:spent|been|seen|worked|found|lost|saved)\b|\bmy (?:clients|customers|patients|students)\b|"
+    r"\b\d+\s+years? (?:of|in) (?:experience|the (?:trade|industry|business))\b|"
+    r"\bI (?:found|noticed|learned|discovered) (?:that |when |it )?")
+
+
+def _unq(s: str) -> str:
+    return re.sub(r"[\"“][^\"”]{1,400}[\"”]", " ", s)
+
+
+def _norm(s: str) -> str:
+    from .gain import _norm as n
+    return n(s)
+
+
+def _words(s: str) -> set[str]:
+    from .gain import _content
+    return _content(s)
+
+
+def is_view(text: str) -> bool:
+    return bool(FIRST.search(_unq(text)))
+
+
+def check(lint) -> None:
+    body = [b for b in lint.blocks if b["type"] in ("p", "li", "h2", "h3", "h4", "tr")]
+    sizes = [len(b["text"].split()) for b in body]
+    total = sum(s for b, s in zip(body, sizes) if b["type"] in ("p", "li", "tr")) or 1
+    notes = lint.b.get("experience") or []
+    notes = [_words(x) for x in (notes if isinstance(notes, list) else [notes]) if str(x).strip()]
+
+    # 1. the author's view: how many, where, and no invented experience
+    passages, pos, first_h2, last_h2_at, prev_view = [], 0, None, None, False
+    for b, n in zip(body, sizes):
+        if b["type"] == "h2":
+            first_h2 = pos if first_h2 is None else first_h2
+            last_h2_at = pos
+        if b["type"] in ("p", "li") and is_view(b["text"]):
+            if not (prev_view and b["type"] == "li"):
+                passages.append((b, pos))
+            prev_view = True
+        elif b["type"] in ("p", "li", "tr"):
+            prev_view = False
+        if b["type"] in ("p", "li", "tr"):
+            pos += n
+        for s in re.split(r"(?<=[.!?])\s+", _unq(b["text"])) if b["type"] in ("p", "li") else []:
+            m = EXPERIENCE.search(s)
+            if m and not any(len(_words(s) & nw) / max(1, len(_words(s))) >= 0.4 for nw in notes):
+                lint.add("V03-claimed-experience", "block", b, s, f"\"{m.group(0).strip()}\" claims first-hand "
+                         "experience the page doesn't have (FTC rules on misrepresented experience; Google's trust "
+                         "guidance)", "give the view as judgement from the facts (\"I'd pick X because…\"), or "
+                         "attribute the experience to the person it came from")
+    lo = 1 if total < 800 else 2
+    if len(passages) < lo:
+        lint.add("V01-author-view-count", "block", None, f"{len(passages)} first-person passage(s)",
+                 f"the page gives no author's view (every page needs {lo}-3)", "where the plan says \"your view\", "
+                 "add 2-4 sentences in the first person: what you'd pick or do and why, and when you'd choose otherwise")
+    elif len(passages) > 3:
+        for b, _ in passages[3:]:
+            lint.add("V01-author-view-count", "block", b, b["text"][:160], f"{len(passages)} first-person passages; "
+                     "at most 3", "keep the 3 strongest views; state the rest as facts")
+    from .plan import VIEW_SHARE
+    for b, at in passages:
+        if first_h2 is None or at < first_h2:
+            lint.add("V02-view-placement", "block", b, b["text"][:160], "the author's view is in the opening",
+                     "the opening answers the query; move the view into a section in the top half of the page")
+        elif at / total > VIEW_SHARE or (last_h2_at is not None and at >= last_h2_at and len(passages) > 0):
+            lint.add("V02-view-placement", "block", b, b["text"][:160], "the author's view is in the last part of the "
+                     "page", "move it to a section in the top or middle of the page, where the plan says \"your view\"")
+
+    # 2. information gain: the items beyond page one are on the page
+    facts = lint.sheet.get("facts") or []
+    links = {u.rstrip("/") for u in re.findall(r"\]\((https?://[^)\s]+)\)", lint.md)}
+    gain = [f for f in facts if str(f.get("id", "")).startswith("gain:")]
+    if gain:
+        paras = [_words(b["text"]) for b in lint.blocks if b["type"] in ("p", "li", "tr")]
+        used = [f for f in gain if (f.get("source_url") or "").rstrip("/") in links
+                or any(len(_words(f.get("point", "")) & p) / max(1, len(_words(f.get("point", "")))) >= 0.5 for p in paras)]
+        need = min(3, len(gain))
+        if len(used) < need:
+            left = [f["id"] for f in gain if f not in used]
+            lint.add("IG01-no-information-gain", "block", None, f"{len(used)} of {len(gain)} items beyond page one used",
+                     "the page says little that page one doesn't (Google's information-gain patent; helpful-content "
+                     "questions on original information)", f"use at least {need - len(used)} more under their headings, "
+                     "crediting who says it and linking the source: " + ", ".join(left[:8]))
+
+    # 3. GEO: cite the sources the page has, quote 1-2 of them, quote exactly
+    client = re.sub(r"^www\.", "", (lint.b.get("domain") or "").lower()).split("/")[0]
+    host = lambda u: re.sub(r"^www\.", "", u.split("/")[2].lower()) if u.count("/") >= 2 else ""
+    ext = {host(u) for u in links} - {client, ""}
+    avail = {host(f["source_url"]) for f in facts if f.get("source_url") and f.get("status") in ("verified", "captured",
+             "operator") and f.get("basis") != "client_page" and not str(f.get("id", "")).startswith(("offer:", "client"))}
+    avail -= {client, ""}
+    need = min(3, len(avail))
+    if len(ext) < need:
+        lint.add("G02-few-citations", "block", None, f"{len(ext)} outside source(s) cited, {len(avail)} available",
+                 "cited sources raise a page's visibility in AI answers (GEO, up to 40%) and its trust",
+                 "link the source on the words a reader would check, where its fact is used: "
+                 + ", ".join(sorted(avail - ext)[:6]))
+    # quotation marks pair left to right ("REFUSED" … "ISSUED" are two short quotes, not one long one)
+    quotes = [(b, q) for b in lint.blocks if b["type"] in ("p", "li")
+              for m in re.finditer(r"\"([^\"]*)\"|“([^”]*)”", b["raw"]) for q in [m.group(1) or m.group(2) or ""]
+              if len(q.split()) >= 8]
+    from .plan import quote_candidates
+    if not quotes and quote_candidates(facts):
+        lint.add("G03-no-quotation", "block", None, "no quotation on the page",
+                 "a source's exact words, quoted and named, raise visibility in AI answers (GEO)",
+                 "quote the plan's quote fact word for word in quotation marks, name and link its source")
+    values = [_norm(str(f.get("value") or "")) for f in facts]
+    for b, q in quotes:
+        nq = _norm(q)
+        if q.rstrip().endswith("?"):
+            continue  # a question people ask, not a source's words
+        if nq and not any(nq in v for v in values):
+            from .gain import quote_on_page
+            if not any(quote_on_page(q, v) for v in values if v):
+                lint.add("G04-misquote", "block", b, q[:160], "the quotation isn't the source's exact words (no fact "
+                         "carries them)", "copy the words exactly from the fact's quote, or paraphrase without "
+                         "quotation marks")

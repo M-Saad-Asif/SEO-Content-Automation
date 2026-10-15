@@ -79,14 +79,28 @@ def build(rd: Path) -> Path:
           "the material for it; any fact below may be used where it fits.", ""]
     W += render(plan, {f["id"]: f for f in facts})
 
-    auth = [f for f in facts if f.get("status") in ("verified", "captured", "operator")
+    gain = [f for f in facts if str(f.get("id", "")).startswith("gain:")]
+    auth = [f for f in facts if f.get("status") in ("verified", "captured", "operator") and f not in gain
             and f.get("basis") != "client_page" and not str(f.get("id", "")).startswith(("offer:", "client"))]
     client = [f for f in facts if f.get("status") in ("verified", "captured", "operator")
               and (f.get("basis") == "client_page" or str(f.get("id", "")).startswith(("offer:", "client")))]
+    quoted = {h["quote"] for h in plan["headings"] if h.get("quote")}
     planned = {i for h in plan["headings"] for i in h.get("facts", [])}
     serpf = [f for f in facts if f.get("status") == "serp"]
     serpf.sort(key=lambda f: (f["id"] not in planned, -(f.get("consensus") or 1)))
     W += ["", "## 3. Facts (notes: write your own sentences; figures exactly as given; no figure that isn't here)"]
+    if gain:
+        W += ["", "### Beyond page one (information gain: what no ranking page says; use every one under its heading, "
+              "credit who says it in the sentence and link the source on those words)"]
+        W += [f"- `{f['id']}` [{f.get('kind')}] {f.get('who')}{' (' + str(f['date']) + ')' if f.get('date') else ''}: "
+              f"{_cut(f.get('point'), 220)} — {f.get('source_url')}"
+              + ("" if f.get("status") == "verified" else " [an experience, quoted by the researcher: attribute it, no figures]")
+              for f in gain]
+    if quoted:
+        W += ["", "### Quotable, word for word (the plan's quote slots: these exact words in quotation marks, the "
+              "source named and linked in the same sentence)"]
+        W += [f"- `{f['id']}` \"{' '.join(str(f.get('value')).split())}\" — {f.get('source_url')}"
+              for f in facts if f["id"] in quoted]
     if auth:
         W += ["", "### Authorities (they win any disagreement; link the source on the words a reader would check)"]
         W += [f"- `{f['id']}` {note(f.get('value'), 30)} — {f.get('source_url')}"
@@ -110,7 +124,13 @@ def build(rd: Path) -> Path:
           "- Mention the research (\"top results\", \"other guides\", \"according to competitors\").",
           "- A figure no fact above carries (arithmetic you show from facts is fine), or a losing figure.",
           "- A competitor's link, invented experience, statistics or credentials, HTML, or an FAQ block (questions are "
-          "headings in the plan)."]
+          "headings in the plan).",
+          "- \"I\" claiming you used, tried, tested, bought or saw something, \"in my experience\", \"my clients\", years "
+          "of experience" + (" (only the client's experience notes below may be told in the first person)"
+                             if b.get("experience") else "") + "."]
+    if b.get("experience"):
+        W += ["", "## 5. First-hand experience you may tell (the client's own notes; nothing beyond them)"]
+        W += [f"- {_cut(x, 300)}" for x in (b["experience"] if isinstance(b["experience"], list) else [b["experience"]])]
     out = rd / "write_brief.md"
     out.write_text("\n".join(W) + "\n", encoding="utf-8")
     return out

@@ -2,7 +2,7 @@ name: reddit_voice
 kind: script
 description: Real experience from Reddit through Reddit's official Data API (OAuth app credentials), never by scraping. Finds the most relevant recent threads and their top comments, and keeps excerpts with subreddit attribution (no usernames). Feeds info_gain. Deep mode.
 needs: [serp_intel]
-modes: [deep]
+modes: [manual]  # off: the seo-gain-researcher agents find experience and evidence beyond page one with the tool's own web search (no Serper credit); Reddit skipped by the operator
 connector: reddit
 budget_s: 10
 outputs: [research/reddit_voice.json]
