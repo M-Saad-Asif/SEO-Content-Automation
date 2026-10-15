@@ -127,7 +127,7 @@ def dfs_items(resp: dict) -> list[dict]:
 def dfs_location(locale: str, override: str | None = None) -> str:
     if override:
         return override
-    region = (locale or "en-GB").partition("-")[2].lower() or "us"
+    region = (locale or "en").partition("-")[2].lower() or "us"
     return LOCATIONS.get(region, "United States")
 
 

@@ -286,10 +286,13 @@ def _gate(step: str, rd: Path, text: str) -> list[str]:
 def _length_line(rd: Path) -> str:
     b = (C.load_json(rd / "fact_sheet.json") or {}).get("brief", {})
     eff, raw = b.get("word_range_effective"), b.get("word_range")
+    if eff and b.get("length_from") == "operator":
+        return (f"Length: {eff[0]}–{eff[1]} words in all (the brief's range; each heading's share is in the plan). "
+                f"Verified material only: a shorter section beats an invented sentence.")
     if eff:
-        return (f"Length: about {eff[0]}–{eff[1]} words in all (set by the plan: every heading the ranking pages cover, "
-                f"answered; each heading's share is in the plan). Verified material only: a shorter section beats an "
-                f"invented sentence.")
+        return (f"Length: each heading's share is in the plan (what the ranking pages write on it, and what its facts "
+                f"need), about {eff[0]}–{eff[1]} words in all; no fixed length. Verified material only: a shorter "
+                f"section beats an invented sentence.")
     if raw:
         return f"Length: aim for {raw[0]}–{raw[1]} words, with verified material only."
     return "Length: as long as the verified material needs, no padding."

@@ -17,7 +17,7 @@ def run(ctx):
             return {"not_configured": why,
                     "mcp_route": "use the DataForSEO MCP (related keywords, keyword overview, SERP with PAA), then `seo.py ingest <run> keyword_research <file>`"}
         loc = K.dfs_location(b["locale"], b.get("dataforseo_location"))
-        lang = (b["locale"] or "en-GB").split("-")[0]
+        lang = (b["locale"] or "en").split("-")[0]
         gsc = ctx.load("gsc_insights") or {}
         seeds = [b["target_query"]] + [r["query"] for r in (gsc.get("rows") or [])[:2]]
         kws, paa = [], []

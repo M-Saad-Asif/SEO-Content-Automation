@@ -104,12 +104,12 @@ def client_site_search(rd: Path, brief: dict) -> int:
     if not domain or not lm:
         return 0
     try:
-        res, _cr = serper.batch([("search", f"site:{domain} {brief['target_query']}")], brief.get("locale") or "en-GB")
+        res, _cr = serper.batch([("search", f"site:{domain} {brief['target_query']}")], brief.get("locale") or "en")
     except Exception:
         return 0
     found = [re.sub(r"[?&](srsltid|utm_\w+|gclid|fbclid)=[^&#]*", "", o.get("link", "").split("#")[0]).rstrip("?&")
              for r in res.values() for o in r.get("organic", [])[:6] if o.get("link")]
-    found = [u for u in clean_internal(found, brief.get("locale") or "en-GB")
+    found = [u for u in clean_internal(found, brief.get("locale") or "en")
              if u.rstrip("/") != page_url.rstrip("/") and C.host(u) == C.host(f"https://{domain}")]
     if not found:
         return 0
@@ -305,7 +305,7 @@ def pick_child_sitemaps(locs: list[str], brief: dict, limit: int = 40) -> list[s
 
 # ---------------------------------------------------------------- products
 
-def product_record(pj: dict, page: dict | None, domain: str) -> dict:
+def product_record(pj: dict, page: dict | None, domain: str, currency: str = "") -> dict:
     handle = pj["handle"]
     url = f"https://{domain}/products/{handle}"
     body = C.collapse(re.sub(r"<[^>]+>", " ", htmlmod.unescape(pj.get("body_html") or "")))
@@ -338,7 +338,7 @@ def product_record(pj: dict, page: dict | None, domain: str) -> dict:
     final = page.get("final_url") if page else None
     return {
         "handle": handle, "url": url, "display_name": display, "title": title, "vendor": vendor,
-        "product_type": pj.get("product_type"), "prices_gbp": prices, "colours": colours,
+        "product_type": pj.get("product_type"), "prices": prices, "currency": currency, "colours": colours,
         "specs": {k: v for k, v in specs.items() if k.lower() != "brand"},
         "dims": parse_dims(dims_raw), "weight_kg": parse_weight(weight_raw),
         # "Approx. 1.2 kg (estimated)" is the shop's guess, not a spec: never quote it as a weight
@@ -368,10 +368,12 @@ def product_facts(p: dict, fetched_at: str) -> list[dict]:
         if k.lower() in ("dimensions", "size", "weight"):
             continue
         out.append({**base, "id": f"p:{p['handle']}:{C.slugify(k)}", "claim": f"{p['display_name']} {k.lower()}", "value": v})
-    if p["prices_gbp"]:
+    prices = p.get("prices") or p.get("prices_gbp") or []  # in the shop's market currency, never assumed
+    sym = p.get("currency", "£" if p.get("prices_gbp") else "")
+    if prices:
         out.append({**base, "id": f"p:{p['handle']}:price", "claim": f"{p['display_name']} price",
-                    "value": " / ".join("£" + x for x in p["prices_gbp"]), "kind": "price",
-                    "numbers": [float(x) for x in p["prices_gbp"]]})
+                    "value": " / ".join(sym + x for x in prices), "kind": "price",
+                    "numbers": [float(x) for x in prices]})
     return out
 
 
@@ -503,7 +505,8 @@ def prep(brief_path: str, refresh: bool = False, quiet: bool = False, timing: bo
     products = []
     for pj in prods_raw:
         pg = r2.get(f"https://{domain}/products/{pj['handle']}")
-        products.append(product_record(pj, pg, domain))
+        from .graph import market_of
+        products.append(product_record(pj, pg, domain, market_of(brief.get("locale") or "en")[1]))
     cols = (ps or {}).get("collection")
     chosen = (bool(ps) and cols not in (None, "all", ["all"])) or bool((ps or {}).get("handles"))
     products = relevant_products(products, brief["target_query"], brief.get("synonyms"), chosen=chosen)
@@ -556,7 +559,7 @@ def prep(brief_path: str, refresh: bool = False, quiet: bool = False, timing: bo
             print(f"  client claim figure dropped (not on the visible homepage): {', '.join(bad)}")
             s = s2
         page_cur = {"gb": "£", "us": "$", "ie": "€", "de": "€", "fr": "€", "es": "€", "it": "€", "nl": "€",
-                    "au": "$", "ca": "$"}.get((brief.get("locale") or "en-GB").partition("-")[2].lower())
+                    "au": "$", "ca": "$"}.get((brief.get("locale") or "en").partition("-")[2].lower())
         if page_cur and any(x in s and x != page_cur for x in ("£", "$", "€")):
             print(f"  client claim dropped (another market's currency): {s[:70]}")
             continue
@@ -610,10 +613,10 @@ def prep(brief_path: str, refresh: bool = False, quiet: bool = False, timing: bo
                      for s in srcs] + [{"url": u, "state": "listed", "status": None, "label": l}
                                        for u, l in (brief.get("extra_links") or {}).items()],
         "internal": clean_internal([u for u in sm_urls if u not in children and "/products/" not in u],
-                                   brief.get("locale") or "en-GB")[:3000],
+                                   brief.get("locale") or "en")[:3000],
     }
     # the client's own pages on this topic: same-topic pages (cannibalisation), related guides, next-step pages
-    rel = related(clean_internal(sm_urls, brief.get("locale") or "en-GB"), brief["target_query"],
+    rel = related(clean_internal(sm_urls, brief.get("locale") or "en"), brief["target_query"],
                   brief.get("synonyms"), exclude=page_url)
     link_map["client_candidates"] = rel.pop("candidates", [])  # re-ranked by the topic's entities in plan.py
     # (the "site:client query" Google search runs after the research waves, when a credit is left: client_site_search)
@@ -940,7 +943,7 @@ def writer_pack(rd: Path, sheet: dict, lm: dict) -> None:
           for c in cl["approved_claims"] if c["seen_on_site"]] or [
               "- No additional approved claims. Use the scoped offer:N and client-page facts above where relevant; invent no service capabilities."]
     cur_of = {"gb": "£", "us": "$", "ie": "€", "de": "€", "fr": "€", "es": "€", "it": "€", "nl": "€", "au": "$", "ca": "$"}
-    want_cur = cur_of.get((b.get("locale") or "en-GB").partition("-")[2].lower())
+    want_cur = cur_of.get((b.get("locale") or "en").partition("-")[2].lower())
     for c in cl["approved_claims"]:
         other = [x for x in ("£", "$", "€") if x in c["text"] and x != want_cur]
         if want_cur and other:

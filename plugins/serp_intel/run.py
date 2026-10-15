@@ -68,7 +68,7 @@ US_MARKS = re.compile(r"\$|\bdollars?\b|\bcents?\b|\bpenn(y|ies)\b|\b\d+/\d+\b|Â
 def foreign(q, locale):
     """True when a borrowed question assumes another country: its units, money, institutions or places."""
     from seolib.nlp import places
-    region = (locale.partition("-")[2] or "gb").lower()
+    region = (locale.partition("-")[2] or "").lower()
     if region != "us" and US_MARKS.search(q):
         return True
     return region != "us" and "geo:us" in places(q)  # borrowed from the US SERP: only US-specific ones are off

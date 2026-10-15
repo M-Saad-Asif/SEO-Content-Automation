@@ -25,17 +25,27 @@ SECTOR_SITES = {
            "safety": ["hse.gov.uk", "gov.uk", "gassaferegister.co.uk"]},
     "us": {"money": ["consumerfinance.gov", "sec.gov", "irs.gov", "fdic.gov"], "health": ["cdc.gov", "nih.gov", "fda.gov"],
            "legal": ["law.cornell.edu", "usa.gov"], "safety": ["osha.gov", "cpsc.gov"]},
-    "ie": {"money": ["centralbank.ie", "ccpc.ie", "revenue.ie"], "health": ["hse.ie"], "legal": ["irishstatutebook.ie"]},
-    "au": {"money": ["moneysmart.gov.au", "asic.gov.au", "ato.gov.au"], "health": ["health.gov.au"]},
-    "ca": {"money": ["canada.ca", "fcac-acfc.gc.ca"], "health": ["canada.ca"]},
+    "ie": {"money": ["centralbank.ie", "ccpc.ie", "revenue.ie"], "health": ["hse.ie"], "legal": ["irishstatutebook.ie"],
+           "safety": ["hsa.ie"]},
+    "au": {"money": ["moneysmart.gov.au", "asic.gov.au", "ato.gov.au"], "health": ["health.gov.au"],
+           "legal": ["legislation.gov.au", "ag.gov.au"], "safety": ["safeworkaustralia.gov.au", "productsafety.gov.au"]},
+    "ca": {"money": ["canada.ca", "fcac-acfc.gc.ca"], "health": ["canada.ca"], "legal": ["laws-lois.justice.gc.ca"],
+           "safety": ["ccohs.ca", "canada.ca"]},
+    "nz": {"money": ["sorted.org.nz", "fma.govt.nz", "ird.govt.nz"], "health": ["health.govt.nz"],
+           "legal": ["legislation.govt.nz", "justice.govt.nz"], "safety": ["worksafe.govt.nz"]},
+    "in": {"money": ["rbi.org.in", "sebi.gov.in", "incometax.gov.in"], "health": ["mohfw.gov.in"],
+           "legal": ["indiacode.nic.in"]},
 }
+# A topic's sector, in the words every English market uses (one market's product names alongside the others')
 SECTOR_WORDS = {
-    "money": r"\b(invest\w*|isas?|pensions?|retire\w*|tax(es|ed)?|mortgages?|loans?|lend\w*|credit|debt|insurance|"
-             r"savings?|bank\w*|stocks?|shares|funds?|crypto\w*|bridging|finance|interest rates?)\b",
+    "money": r"\b(invest\w*|isas?|401\(?k\)?|iras?|roth|superannuation|super fund|kiwisaver|rrsps?|tfsas?|pensions?|"
+             r"retire\w*|tax(es|ed)?|mortgages?|loans?|lend\w*|credit|debt|insurance|savings?|bank\w*|stocks?|shares|"
+             r"funds?|crypto\w*|bridging|finance|interest rates?)\b",
     "health": r"\b(symptoms?|diseases?|medic\w*|dosage|dose|pregnan\w*|vaccin\w*|treatment|diagnos\w*|health|nutrition|"
               r"protein|vitamin|diet)\b",
-    "legal": r"\b(legal\w*|law|laws|lawyer|solicitor|visas?|immigration|tenan\w*|landlord|contract|divorce|regulat\w*)\b",
-    "safety": r"\b(safety|carbon monoxide|gas|boiler|electrical|fire|tyres?|tread)\b",
+    "legal": r"\b(legal\w*|law|laws|lawyer|attorney|solicitor|visas?|immigration|tenan\w*|landlord|lease|contract|"
+             r"divorce|regulat\w*)\b",
+    "safety": r"\b(safety|carbon monoxide|gas|boiler|furnace|electrical|fire|tyres?|tires?|tread)\b",
 }
 # Rule-shaped language in any field: obligations, limits, costs, durations, outcomes.
 RULE = re.compile(r"\b(must|need to|needs to|cannot|can't|can only|only|at least|up to|within|no more than|maximum|"
@@ -130,7 +140,7 @@ def run(ctx):
     # from a hand-made topic list.
     asked = [q] + serp.get("paa", []) + serp.get("question_autocomplete", [])[:6] + serp.get("related", [])[:6]
     qt = set().union(*(toks(x) for x in asked))
-    region = (ctx.brief.get("locale") or "en-GB").partition("-")[2].lower()
+    region = (ctx.brief.get("locale") or "en").partition("-")[2].lower()
     client = ctx.brief["domain"].replace("www.", "")
     proper = {p.lower() for p in ctx.brief.get("proper_nouns") or []}
     cands, searched = [], set()

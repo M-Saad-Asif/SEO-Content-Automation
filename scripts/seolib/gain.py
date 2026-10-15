@@ -37,7 +37,7 @@ def files(rd: Path) -> list[Path]:
 
 def task_lines(brief: dict, R: str) -> list[str]:
     """The researchers' task: two at the same time, each with its own brief and file."""
-    q, loc = brief.get("target_query"), brief.get("locale") or "en-GB"
+    q, loc = brief.get("target_query"), brief.get("locale") or "en"
     client, ptype = brief.get("client"), brief.get("page_type") or "guide"
     common = [
         f"Topic: \"{q}\" for {client} ({brief.get('domain')}), a {ptype} page, market {loc}.",
@@ -50,7 +50,7 @@ def task_lines(brief: dict, R: str) -> list[str]:
         "  point: one sentence in your own words (figures exactly as the source gives them, with their condition)",
         "  quote: the source's exact words that carry the point, 8-40 words, copied character for character",
         "  source: the page's full URL",
-        "  who: who says it, as a reader would see it (\"a member of the DIYnot forum\", \"Which? (2025 test)\"); "
+        "  who: who says it, as a reader would see it (\"a member of a trade forum\", \"an independent consumer test (2025)\"); "
         "never a username",
         "  date: the year or date the page shows (blank if none)",
         "Never invent, merge or round a quote; skip anything you could not read yourself. Skip the client's own site, "
@@ -66,7 +66,7 @@ def task_lines(brief: dict, R: str) -> list[str]:
         "do A yourself, then B; without web search, skip this task).",
         "",
         "A (people): first-hand experiences and opinions from forums, Q&A sites, community and specialist sites "
-        "(Quora, trade and hobby forums, Mumsnet, public Facebook groups, review sites, YouTube comments): what people "
+        "(Quora, trade and hobby forums, parenting and community forums in the page's market, public Facebook groups, review sites, YouTube comments): what people "
         "found when they did it, what went wrong, what they'd do differently, which option they prefer and why.",
         "B (evidence): data and changes beyond page one: studies, independent tests, official statistics, "
         "manufacturers' data sheets, rule or price changes from the last 12 months, common mistakes and their cost.",

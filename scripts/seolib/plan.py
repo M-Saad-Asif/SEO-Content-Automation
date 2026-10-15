@@ -102,7 +102,7 @@ def build(rd: Path) -> dict:
     ptype = b.get("page_type") or "guide"
     main = words(query)
     from .graph import foreign, market_of
-    home_geo, home_cur = market_of(b.get("locale") or "en-GB")
+    home_geo, home_cur = market_of(b.get("locale") or "en")
     decision = {r["query"].lower(): r.get("decision") for r in qmap.get("queries", [])}
 
     def own(s):  # a heading's own words: the topic's words are in every heading and say nothing
@@ -347,20 +347,53 @@ def build(rd: Path) -> dict:
         if best is not None and tt & (own(best["title"]) | set().union(*(own(x["title"]) for x in best["subs"]))):
             best.setdefault("links", []).append(u)
 
-    # 6. words per heading, and parts for writers working at the same time
-    lo, hi = b.get("word_range_effective") or b.get("word_range") or [900, 1400]
-    budget = (lo + hi) // 2
-    units = sum(1 + 0.5 * len(h["subs"]) for h in heads) or 1
-    per = max(110, int((budget - 90) / units))
+    # 6. words per heading, and parts for writers working at the same time. No fixed length for every page: each
+    # heading gets the room the ranking pages give that topic (the median of what they write under it) and the
+    # room its facts need; the page is the sum. A range the operator set in the brief is the only hard limit.
+    depth = section_depths(C.load_json(rd / "research" / "competitor_scrape.json") or {})
+    sec_heads = {s["id"]: s.get("headings") or [s["title"]] for s in out.get("sections", [])}
+    for s in out.get("sections", []):
+        for ss in s.get("subsections", []):
+            sec_heads[ss["id"]] = ss.get("headings") or [ss["title"]]
+
+    def room(item: dict, top: bool) -> int:
+        names = [item["title"]] + [n for c in item.get("covers", []) for n in sec_heads.get(c, [])]
+        seen = depth_of(depth, names, own_only=bool(item.get("subs")))
+        need = (50 if top else 40) + 20 * min(len(item.get("facts", [])), 6) + 15 * len(item.get("steps", []))
+        base = max(seen, int(0.7 * need)) if seen else need  # what page one writes, never less than the facts need
+        # a topic most ranking pages cover gets their full depth; one only a single site covers, a short section
+        weight = min(1.0, 0.4 + 0.2 * (item.get("sites") or 1)) if seen else 1.0
+        return int(min(max(base * weight, 60 if top else 40), 400 if top else 220))  # at least the ~40-word answer
+
     for h in heads:
-        h["words"] = int(per * (1 + 0.5 * len(h["subs"])))
+        h["words"] = room(h, True) + sum(room(x, False) for x in h["subs"])
     total = 90 + sum(h["words"] for h in heads)
-    if total > hi:  # every heading answered properly: the length range follows the plan
-        lo, hi = int(total * 0.85), int(total * 1.2)
-        with C.file_lock(rd / "fact_sheet.json"):
-            sh = C.load_json(rd / "fact_sheet.json")
-            sh["brief"]["word_range_effective"] = [lo, hi]
-            C.save_json(rd / "fact_sheet.json", sh)
+    # never far longer than the most thorough page Google already ranks for the query
+    comp_words = [p.get("words") or 0 for p in (C.load_json(rd / "research" / "competitor_scrape.json") or {})
+                  .get("pages", []) or []]
+    ceiling = int(1.2 * max(comp_words)) if comp_words and max(comp_words) > 300 else 0
+    if ceiling and total > ceiling:
+        f = (ceiling - 90) / max(1, total - 90)
+        for h in heads:
+            h["words"] = max(60, int(h["words"] * f))
+        total = 90 + sum(h["words"] for h in heads)
+    if not heads:  # nothing planned (no outline): the page type's usual range
+        total = sum(b.get("word_range") or [900, 1400]) // 2
+    explicit = b.get("word_range_source") == "explicit" and b.get("word_range")
+    if explicit:  # the operator's range: the plan's shares scale to fit it
+        e_lo, e_hi = b["word_range"]
+        scale = min(1.0, (e_lo + e_hi) / 2 / total) if total > e_hi else max(1.0, (e_lo + e_hi) / 2 / total) \
+            if total < e_lo else 1.0
+        for h in heads:
+            h["words"] = int(h["words"] * scale)
+        lo, hi = e_lo, e_hi
+    else:
+        lo, hi = int(total * 0.8), int(total * 1.25)
+    with C.file_lock(rd / "fact_sheet.json"):
+        sh = C.load_json(rd / "fact_sheet.json")
+        sh["brief"]["word_range_effective"] = [lo, hi]
+        sh["brief"]["length_from"] = "operator" if explicit else "plan"
+        C.save_json(rd / "fact_sheet.json", sh)
     n_parts = 3 if len(heads) >= 9 else 2 if len(heads) >= 5 else 1
     parts, size = [], -(-len(heads) // n_parts)
     for i in range(n_parts):
@@ -371,6 +404,41 @@ def build(rd: Path) -> dict:
             "parts": parts, "words": [lo, hi]}
     C.save_json(rd / "plan.json", plan)
     return plan
+
+
+def section_depths(comp: dict) -> list[tuple[set, int, int]]:
+    """For every heading on every ranking page: its words, the words right under it (to the next heading of any
+    level), and the words of its whole section (to the next heading of the same or a higher level)."""
+    out = []
+    for pg in comp.get("pages", []) or []:
+        blocks = pg.get("blocks") or []
+        for i, (tag, text) in enumerate(blocks):
+            if not (isinstance(tag, str) and re.fullmatch(r"h[2-4]", tag)):
+                continue
+            lvl, own, whole, under_sub = int(tag[1]), 0, 0, False
+            for t2, x2 in blocks[i + 1:]:
+                if isinstance(t2, str) and re.fullmatch(r"h[1-6]", t2):
+                    if int(t2[1]) <= lvl:
+                        break
+                    under_sub = True
+                    continue
+                if t2 in ("p", "li", "td", "tr"):
+                    n = len(str(x2).split())
+                    whole += n
+                    own += 0 if under_sub else n
+            if whole:
+                out.append((words(text), own, whole))
+    return out
+
+
+def depth_of(depth: list[tuple[set, int, int]], names: list[str], own_only: bool = False) -> int:
+    """The median words the ranking pages write under a heading matching any of these names (0: none found). With
+    own_only, only the words before its first subheading (our plan writes its subheadings separately)."""
+    import statistics
+    keys = [words(n) for n in names if n]
+    got = [(o if own_only else w2) for w, o, w2 in depth if w and any(k and jac(k, w) >= 0.6 for k in keys)]
+    got = [g for g in got if g]
+    return int(statistics.median(got)) if got else 0
 
 
 DECIDE = re.compile(r"(?i)\b(which|best|vs\.?|versus|or|better|worth|choose|choosing|should|compare|comparison|cost|"

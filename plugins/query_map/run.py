@@ -154,7 +154,7 @@ def run(ctx):
     cap = 8 if ctx.deep() else 5
     # another market's questions leak into a SERP (a UK search showing "$100,000" or a US radio host): a question in
     # another currency, or naming someone or something no ranking page for this market mentions, isn't this reader's
-    region = (ctx.brief.get("locale") or "en-GB").partition("-")[2].lower() or "gb"
+    region = (ctx.brief.get("locale") or "en").partition("-")[2].lower() or ""
     home_cur = {"gb": "£", "uk": "£", "us": "$", "ca": "$", "au": "$", "nz": "$", "ie": "€", "de": "€", "fr": "€",
                 "es": "€", "it": "€", "nl": "€", "ae": "aed", "in": "₹"}.get(region, "")
     foreign_cur = [c for c in ("$", "£", "€", "₹") if c != home_cur and home_cur]

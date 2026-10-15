@@ -208,7 +208,7 @@ def search(query: str, locale: str, num: int = 10) -> dict:
         cached["cached"] = True
         return cached
     import httpx
-    lang, _, region = (locale or "en-GB").partition("-")
+    lang, _, region = (locale or "en").partition("-")
     body = {"search": query, "num": num, "country": (region or "us").lower(), "language": lang.lower()}
     try:
         r = httpx.post(f"{ENDPOINT}/search", json=body, headers=_headers(), timeout=90)

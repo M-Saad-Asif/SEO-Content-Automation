@@ -53,7 +53,7 @@ def api_key() -> str | None:
 
 
 def locale_params(locale: str) -> tuple[str, str]:
-    lang, _, region = (locale or "en-GB").partition("-")
+    lang, _, region = (locale or "en").partition("-")
     region = (region or "us").lower()
     # Google's country code for the United Kingdom is "uk", not the ISO "gb": with gl=gb Google returns organic
     # results but no People Also Ask and no related searches, so every UK page lost its question data

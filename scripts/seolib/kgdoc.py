@@ -48,7 +48,7 @@ def _facts(sheet: dict) -> list[dict]:
 
 
 def _market(locale: str) -> str:
-    region = (locale or "en-GB").partition("-")[2].upper() or "GB"
+    region = (locale or "en").partition("-")[2].upper() or ""
     names = {"GB": "United Kingdom", "UK": "United Kingdom", "US": "United States", "IE": "Ireland", "AU": "Australia",
              "CA": "Canada", "NZ": "New Zealand", "IN": "India", "AE": "United Arab Emirates", "DE": "Germany",
              "FR": "France", "ES": "Spain", "IT": "Italy", "NL": "Netherlands"}

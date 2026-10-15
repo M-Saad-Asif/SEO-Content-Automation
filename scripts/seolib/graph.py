@@ -168,13 +168,18 @@ def sentences(text: str) -> list[str]:
 
 
 def market_of(locale: str) -> tuple[str, str]:
-    region = (locale or "en-GB").partition("-")[2].lower() or "gb"
+    """("geo:<country>", its currency) for a locale; ("", "") when the brief names no country (no market filter)."""
+    region = (locale or "en").partition("-")[2].lower()
+    if not region:
+        return "", ""
     return ("geo:" + ("gb" if region == "uk" else region)), CUR_OF.get(region, "")
 
 
 def foreign(sentence: str, home_geo: str, home_cur: str) -> bool:
     """About another market: another currency, another market's units (Fahrenheit, US gallons outside the US), or a
-    country other than this one (the EU counts as neighbourly)."""
+    country other than this one (the EU counts as neighbourly). With no market named, nothing is foreign."""
+    if not home_geo:
+        return False
     if home_cur and any(c in sentence for c in "£$€₹" if c != home_cur):
         return True
     if home_geo != "geo:us" and re.search(r"°\s?F\b|\bfahrenheit\b|\bgallons?\b|\bquarts?\b", sentence, re.I):

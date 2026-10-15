@@ -255,7 +255,7 @@ def research_pack(rd: Path) -> None:
               "Use one only when it is a real comment from readers like this page's (same country, same situation) and it "
               "helps; quote or closely paraphrase it and say where it comes from. Never write a crowd claim (\"people on "
               "Reddit say…\") that no comment below supports. Never take a rule or a number from here."]
-        region = "geo:" + ((sheet["brief"].get("locale") or "en-GB").partition("-")[2].lower() or "gb")
+        region = "geo:" + ((sheet["brief"].get("locale") or "en").partition("-")[2].lower() or "")
         local = [i for i in gain["items"] if foreign_place(i, region) is None]
         dropped = len(gain["items"]) - len(local)
         if dropped:

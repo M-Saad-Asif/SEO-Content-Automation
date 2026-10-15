@@ -17,15 +17,23 @@ UGC = ("reddit.com", "quora.com", "stackexchange.com", "stackoverflow.com", "mum
 UGC_PATH = re.compile(r"/(forums?|community|communities|discussions?|threads?|boards?|topic)/", re.I)
 VIDEO = ("youtube.com", "youtu.be", "vimeo.com", "tiktok.com", "dailymotion.com")
 IMAGE = ("pinterest.", "instagram.com", "flickr.com", "unsplash.com")
+# marketplaces and big retailers, across markets (world data: every niche uses the same list)
 MARKET = ("amazon.", "ebay.", "etsy.com", "argos.co.uk", "johnlewis.com", "walmart.com", "aliexpress.", "temu.com",
-          "next.co.uk", "very.co.uk", "currys.co.uk", "debenhams.com", "asos.com", "zalando.")
+          "next.co.uk", "very.co.uk", "currys.co.uk", "debenhams.com", "asos.com", "zalando.", "target.com",
+          "bestbuy.com", "homedepot.com", "lowes.com", "costco.", "wayfair.", "bunnings.com.au", "jbhifi.com.au",
+          "harveynorman.", "kmart.com.au", "canadiantire.ca", "flipkart.com", "trademe.co.nz", "noon.com",
+          "mercadolibre.", "rakuten.", "otto.de", "cdiscount.com", "bol.com", "allegro.pl")
 APPS = ("play.google.com", "apps.apple.com")
 REFERENCE = ("wikipedia.org", "britannica.com", "investopedia.com", "dictionary.", "merriam-webster.com")
 AUTHORITY = ("bbc.co.uk", "bbc.com", "nhs.uk", "which.co.uk", "citizensadvice.org.uk", "theguardian.com",
              "telegraph.co.uk", "independent.co.uk", "forbes.com", "nytimes.com", "cnn.com", "reuters.com",
              "moneysavingexpert.com", "timeout.com", "cntraveler.com", "lonelyplanet.com", "which.com",
              "consumerreports.org", "wired.com", "theverge.com", "techradar.com", "tomsguide.com", "gq-magazine.co.uk",
-             "vogue.co.uk", "esquire.com", "cosmopolitan.com")
+             "vogue.co.uk", "esquire.com", "cosmopolitan.com",
+             # the same kinds of publisher and consumer body in other markets
+             "apnews.com", "npr.org", "washingtonpost.com", "wsj.com", "mayoclinic.org", "clevelandclinic.org",
+             "webmd.com", "abc.net.au", "choice.com.au", "smh.com.au", "cbc.ca", "theglobeandmail.com",
+             "rte.ie", "irishtimes.com", "rnz.co.nz", "consumer.org.nz", "thehindu.com", "indianexpress.com")
 
 
 SECOND_LEVEL = {"co", "org", "ac", "gov", "net", "com", "nhs", "ltd", "plc", "me", "sch", "police", "mod", "edu"}

@@ -121,7 +121,7 @@ def run(ctx):
     if not pages:
         return {"facts_added": 0, "summary": "no readable ranking pages: nothing to validate against"}
     syn = ctx.brief.get("synonyms") or {}
-    loc = (ctx.brief.get("locale") or "en-GB").split("-")[-1].lower()
+    loc = (ctx.brief.get("locale") or "en").split("-")[-1].lower()
     home = "geo:" + {"uk": "gb"}.get(loc, loc)
     qt = toks(ctx.brief.get("target_query", "") + " " + " ".join(f"{k} {v}" for k, v in syn.items()))
     topic = set(qt)
@@ -131,7 +131,7 @@ def run(ctx):
         topic |= toks(t.get("topic", ""))
 
     from seolib.graph import foreign as _foreign, market_of
-    hgeo, hcur = market_of(ctx.brief.get("locale") or "en-GB")
+    hgeo, hcur = market_of(ctx.brief.get("locale") or "en")
 
     def foreign_units(s):
         if hgeo != "geo:us" and re.search(r"\b\d{2,3}\s?(°\s?)?F\b", s):

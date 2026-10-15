@@ -111,7 +111,7 @@ def run(ctx):
     brands |= {(o.get("domain") or "").lower().removeprefix("www.").split(".")[0] for o in serp.get("organic", [])}
     client_root = (ctx.brief.get("domain") or "").replace("https://", "").replace("www.", "").split(".")[0].lower()
     brands = {b for b in brands if len(b) > 3 and b != client_root and not any(same_stem(b, t) for t in main)}
-    home_geo, home_cur = G.market_of(ctx.brief.get("locale") or "en-GB")
+    home_geo, home_cur = G.market_of(ctx.brief.get("locale") or "en")
 
     def brand_of(h):
         flat = re.sub(r"[^a-z0-9]", "", h.lower())

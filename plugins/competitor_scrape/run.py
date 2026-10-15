@@ -96,7 +96,7 @@ def run(ctx):
             skipped.append({"url": o["link"], "why": f"{r.get('state') or 'error'} ({r.get('status')})"})
             continue
         blocks = r.get("blocks", [])
-        if other_language(blocks, ctx.brief.get("locale") or "en-GB"):
+        if other_language(blocks, ctx.brief.get("locale") or "en"):
             skipped.append({"url": o["link"], "why": "written in another language than the page's locale"})
             continue
         dup = clone_of(blocks, pages)
@@ -131,7 +131,7 @@ def run(ctx):
                 skipped.append({"url": u, "why": "backfill unavailable, redundant or sufficient readable sources retained"})
                 continue
             blocks = r.get("blocks", [])
-            if clone_of(blocks, pages) or other_language(blocks, ctx.brief.get("locale") or "en-GB"):
+            if clone_of(blocks, pages) or other_language(blocks, ctx.brief.get("locale") or "en"):
                 continue
             pages.append({"position": None, "url": u, "domain": domain(u), "kind": kind(u),
                           "title": r.get("title"), "outline": [[int(t[1]), x] for t, x in blocks if t in ("h1", "h2", "h3", "h4")],

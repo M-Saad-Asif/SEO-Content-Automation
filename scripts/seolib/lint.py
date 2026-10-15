@@ -770,10 +770,15 @@ class Linter:
 
     # 7 locale spelling + × symbol
     def r_locale(self):
-        loc = (self.b.get("locale") or "en-GB").lower()
+        loc = (self.b.get("locale") or "en").lower()
+        # each English market's own spelling: British forms where that market uses them, American in the US and
+        # the Philippines; no rule where usage is mixed (Canada), unknown (no country) or the page isn't English
+        brit = ("en-gb", "en-uk", "en-au", "en-nz", "en-ie", "en-in", "en-za", "en-sg", "en-hk", "en-pk", "en-ae")
+        if not (loc.startswith(brit) or loc.startswith(("en-us", "en-ph"))):
+            return
         table = self.lex.get("us_to_uk", {})
         exc = set(self.lex.get("ize_exceptions", []))
-        if loc.startswith("en-us"):
+        if loc.startswith(("en-us", "en-ph")):
             table = {v: k for k, v in table.items()}
         for b, s in self.prose(include_cells=True, include_headings=True):
             t = unquote(s)
@@ -781,7 +786,7 @@ class Linter:
                 if re.search(rf"\b{re.escape(bad)}\b", t, re.I if bad.islower() else 0):
                     if re.search(rf"\b{re.escape(bad)}\b", t):  # lower-case only: skip proper names
                         self.add("L01-locale-spelling", "block", b, s, f"\"{bad}\" is not {loc} spelling", f"use \"{good}\"")
-            if loc.startswith("en-gb"):
+            if loc.startswith(brit):
                 for w in re.findall(r"\b[a-z]+(?:iz|yz)(?:e|es|ed|ing|ation|ations|er|ers)\b", t):
                     if w not in exc and not any(w.startswith(x) for x in exc):
                         self.add("L01-locale-spelling", "block", b, s, f"\"{w}\" is US spelling", f"use \"{w.replace('iz', 'is').replace('yz', 'ys')}\"")
@@ -1891,7 +1896,7 @@ class Linter:
 
     def r_units(self):
         """Units the reader uses: imperial first on en-US pages, metric on others (a conversion in brackets is fine)."""
-        loc = (self.b.get("locale") or "en-GB").lower()
+        loc = (self.b.get("locale") or "en").lower()
         metric = re.compile(r"\d\s?(°c|cm|mm|km|kg|g|ml|litres?|liters?|metres?|meters?)\b", re.I)
         imperial = re.compile(r"\d\s?(°f|inch(es)?|ft|feet|foot|" + ("" if loc.startswith("en-gb") else "miles?|") + r"lbs?|pounds? (of|in weight)|oz|ounces?|gallons?|"
                               r"fl oz|yards?)\b|\d+\s?(\"|'')", re.I)
@@ -2366,8 +2371,13 @@ class Linter:
         n = len(words(body))
         lo, hi = (self.b.get("word_range_effective") or self.b.get("word_range") or [0, 10 ** 6])
         if n < lo or n > hi:
-            sev = "block" if (n < lo * 0.75 or n > hi * 1.25) else "warn"
-            self.add("W01-word-count", sev, None, f"{n} words", f"outside word_range {lo}-{hi}", "trim or extend to fit the brief")
+            # a range the operator set is a limit; the plan's own estimate is a guide (every page is as long as its
+            # headings need): far short of it means sections were skipped, so it is shown, not sent back
+            hard = self.b.get("length_from") == "operator" or (self.b.get("word_range_source") == "explicit"
+                                                                and not self.b.get("length_from"))
+            sev = "block" if hard and (n < lo * 0.75 or n > hi * 1.25) else "warn"
+            self.add("W01-word-count", sev, None, f"{n} words", f"outside {'the brief' if hard else 'the plan'}'s "
+                     f"{lo}-{hi}", "trim or extend to fit the brief" if hard else "check for thin or padded sections")
         # SERP display: titles past ~60 chars and descriptions past ~160 get cut mid-thought
         tl, md = len(str(self.meta.get("title", ""))), len(str(self.meta.get("meta_description", "")))
         if tl > 65:
