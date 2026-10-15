@@ -1,3 +1,7 @@
+---
+name: serp_facts
+description: The points the page-one pages already make, counted by site; the majority of ranking sites settles a disagreement, rank breaks a tie, an authority overrides; each point becomes a usable serp fact.
+---
 # serp_facts — the points page one has already validated
 
 ## Why

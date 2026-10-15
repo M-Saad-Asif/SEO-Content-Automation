@@ -403,6 +403,12 @@ class Linter:
             elif b["type"].startswith("h") and include_headings:
                 yield b, b["text"]
 
+    def r_humanize(self):
+        """What separates human from AI writing in the University of Maryland / Google DeepMind research
+        (StoryScope, IdeaLens): seolib/humanize.py."""
+        from .humanize import check
+        check(self)
+
     def r_page_job(self):
         """Commercial pages explain the scoped client offer and next step. Keep official obligations and
         limitations; flag duplicated competing CTAs. Informational pages have no sales quota."""
@@ -480,7 +486,7 @@ class Linter:
                          "the verified service value nearby and consolidate duplicate disclosures")
 
     def run(self) -> list[dict]:
-        for fn in (self.r_page_job, self.r_length, self.r_snippet, self.r_openers, self.r_trailing_ing, self.r_vague,
+        for fn in (self.r_page_job, self.r_koray_rules, self.r_humanize, self.r_length, self.r_snippet, self.r_openers, self.r_trailing_ing, self.r_vague,
                    self.r_noun_stack, self.r_nominal, self.r_person, self.r_locale, self.r_times,
                    self.r_lexicon, self.r_tells, self.r_labels, self.r_signposts, self.r_bold_bullets, self.r_numbers,
                    self.r_links, self.r_tables, self.r_absolutes, self.r_client, self.r_codes,
@@ -524,8 +530,8 @@ class Linter:
                 n = len(words(b["text"]))
                 q = prev["text"].rstrip().endswith("?")
                 if q and n > 50:
-                    self.add("S02-snippet-length", "block", b, b["text"], f"answer under a question heading is {n} words (40-50 max)",
-                             "answer in 2-3 sentences, 40-50 words, then support it in the next paragraph")
+                    self.add("S02-snippet-length", "block", b, b["text"], f"answer under a question heading is {n} words (Koray: about 40, 50 at most)",
+                             "answer in 1-3 sentences, about 40 words, then support it in the next paragraph")
                 elif n > 90 or (n > 70 and prev["type"] == "h1"):
                     self.add("S02-snippet-length", "warn", b, b["text"], f"opening paragraph is {n} words", "tighten the first paragraph under this heading")
                 prev = None
@@ -881,8 +887,10 @@ class Linter:
                     self.add("U02-redirecting-url", "block", b, f"[{anchor}]({url})", f"redirects to {prod[u]['redirected_to']}", "link the final URL")
                 if "/collections/" in u and any(n in anchor.lower() for n in names):
                     self.add("U03-product-to-collection", "block", b, f"[{anchor}]({url})", "product name linked to a collection", "link the product page")
+            titles = {k.rstrip("/"): v.lower() for k, v in (self.lm.get("client_titles") or {}).items()}
             for anchor, url in re.findall(r"\[([^\]]+)\]\(([^)\s]+)\)", raw):
-                if len(anchor.split()) > 8:
+                # Koray rule 11: the anchor is the target page's title, however long that title is
+                if len(anchor.split()) > 8 and anchor.lower() not in titles.get(url.rstrip("/"), ""):
                     self.add("U11-long-anchor", "warn", b, f"[{anchor}]", f"{len(anchor.split())}-word anchor",
                              "anchor 2–6 words that name the target page")
             txt = strip_md(raw)
@@ -1183,9 +1191,10 @@ class Linter:
                 self.add("H01-title-case", "block", b, t, "heading uses Title Case", "use sentence case: capitalise the first word and proper nouns only")
             if len(t) > 70:
                 self.add("H01-heading-length", "warn", b, t, f"heading is {len(t)} characters", "shorten to under about 70")
-            if b["type"] == "h2" and self.b.get("page_type") in ("guide", "spoke", "product-guide") and not (
-                    t.endswith("?") or re.match(r"(how to|how do|how much|which|what|when|where|why|can|do|does|is|are|should)\b", t, re.I)):
-                self.add("H03-question-heading", "warn", b, t, "explanatory H2 is not a reader question or How-to task",
+            if b["type"] == "h2" and not (
+                    t.endswith("?") or re.match(r"(how|which|what|when|where|why|who|can|do|does|is|are|should|will)\b", t, re.I)):
+                self.add("H03-question-heading", "block", b, t, "H2 is not a reader question or How-to task (Koray: H2s are the "
+                         "reader's questions)",
                          "phrase it as the entity-specific question the section answers")
         title = self.meta.get("title")
         if not title:
@@ -1258,23 +1267,33 @@ class Linter:
                     continue
                 self.add("K03-contextless-heading", "block", b, b["text"], "contextless heading",
                          "name the subject the section covers; place questions according to the Page job")
+        # no skipped heading levels (an H3 needs an H2 above it, an H4 an H3)
+        level = 1
+        for b in self.blocks:
+            if b["type"] in ("h2", "h3", "h4"):
+                n = int(b["type"][1])
+                if n > level + 1:
+                    self.add("K16-skipped-level", "block", b, b["text"], f"H{n} straight after H{level} (Koray: no skipped "
+                             "heading levels)", f"make it an H{level + 1}, or put it under the H{n - 1} it belongs to")
+                level = n
         # sentence-initial "If": declaration first
         for b, s in self.prose():
             m_if = re.match(r"^If\b([^,]*),", s)
-            if m_if and len(m_if.group(1).split()) > 12:
-                self.add("K04-if-opener", "warn", b, s, "opens with a condition", "state the declaration first, then the condition")
+            if m_if:
+                self.add("K04-if-opener", "block", b, s, "opens with a condition (Koray rule 10: \"if\" goes second)",
+                         "state the declaration or instruction first, then the condition (\"Do X if Y\")")
         # bold: at most one per section, never a whole sentence
-        per_sec = Counter()
+        qwords = {w for w in re.findall(r"[a-z0-9]+", (self.b.get("target_query") or "").lower()) if w not in STOP}
         for b in self.blocks:
             raw = b.get("raw", "")
+            hwords = {w for w in re.findall(r"[a-z0-9]+", (b.get("section_title") or "").lower()) if w not in STOP}
             for m in re.finditer(r"\*\*([^*]+)\*\*", raw):
-                per_sec[b["section"]] += 1
-                if len(m.group(1).split()) > 8:
-                    self.add("K05-bold", "warn", b, m.group(1), "bold on a whole phrase or sentence", "bold only the answer value")
-        for sec, n in per_sec.items():
-            if n > 2:
-                b = next(x for x in self.blocks if x["section"] == sec)
-                self.add("K05-bold", "warn", b, b.get("section_title") or "", f"{n} bold spans in one section", "one bold per section, on the answer")
+                bw = {w for w in re.findall(r"[a-z0-9]+", m.group(1).lower()) if w not in STOP}
+                if bw and bw <= (qwords | hwords):
+                    self.add("K05-bold-search-term", "block", b, m.group(1), "bolds the search term, not the answer "
+                             "(Koray rule 13)", "bold the answer items instead, or no bold")
+                elif len(m.group(1).split()) > 8:
+                    self.add("K05-bold", "warn", b, m.group(1), "bold on a whole phrase or sentence", "bold only the answer items")
         # acronyms expanded on first use
         body = " ".join(b["raw"] for b in self.blocks if b["type"] in ("p", "li", "tr", "h2", "h3"))
         body = re.sub(r"\]\([^)]*\)", "]", body)
@@ -1321,14 +1340,93 @@ class Linter:
         # anchors carry the target's name
         names_by_url = {c["url"].rstrip("/"): c.get("name", "") for c in self.lm.get("children", [])}
         names_by_url.update({p["url"].rstrip("/"): p.get("name", "") for p in self.lm.get("products", [])})
+        names_by_url.update({u.rstrip("/"): t for u, t in (self.lm.get("client_titles") or {}).items() if t})
         for b in self.blocks:
             for anchor, url in re.findall(r"\[([^\]]+)\]\(([^)\s]+)\)", b.get("raw", "")):
                 name = names_by_url.get(url.rstrip("/"))
                 if name:
-                    nt = {w.lower() for w in re.findall(r"[A-Za-z]{3,}", name)}
-                    if nt and not nt & {w.lower() for w in re.findall(r"[A-Za-z]{3,}", anchor)}:
-                        self.add("K09-anchor", "warn", b, f"[{anchor}]({url})", f"anchor doesn't name the target (\"{name}\")",
-                                 "use the target page's name in the anchor")
+                    nt = {w.lower() for w in re.findall(r"[A-Za-z]{3,}", name)} - STOP
+                    at = {w.lower() for w in re.findall(r"[A-Za-z]{3,}", anchor)}
+                    if nt and len(nt & at) < max(1, round(0.5 * len(nt))):
+                        self.add("K09-anchor", "block", b, f"[{anchor}]({url})", f"anchor doesn't match the target page's "
+                                 f"title (\"{name}\"; Koray rule 11)", "use the target page's title, or its head phrase, as the anchor")
+
+    HEDGE = re.compile(r"(?i)^(you|we) (should|need to|'?ll need to)\b|\b(should be|might|could possibly|it seems|perhaps|"
+                       r"probably|it is recommended|it's recommended)\b")
+    OPINION = re.compile(r"(?i)\b(i think|we think|i believe|we believe|in our (opinion|view)|in my (opinion|view)|"
+                         r"we'?d recommend|we recommend|i'?d recommend|our advice is|we suggest|we feel)\b")
+    VAGUE = re.compile(r"(?i)\b(many|several|various|numerous|a number of|a lot of|lots of|countless|plenty of|a variety of|"
+                       r"a range of|a few)\s+(?:[a-z-]+\s+){0,2}?([a-z]+s)\b")
+    FLUFF = re.compile(r"(?i)\b(basically|actually|in order to|as a matter of fact|needless to say|it goes without saying|"
+                       r"it is important to note that|it's important to note that)\b")
+
+    def r_koray_rules(self):
+        """Koray's rules that a script can check (RULES.md section 7): be certain (2), facts not opinions (2),
+        numbers and examples after plural nouns (4, 5, 7), no fluff (3), the same part of speech in lists (8), the
+        source before the claim."""
+        for b, s in self.prose():
+            plain = re.sub(r"[\"“][^\"”]*[\"”]", " ", s)  # quoted words are the source's, not the page's
+            m = self.HEDGE.search(plain)
+            if m:
+                self.add("K10-hedge", "block", b, s, f"\"{m.group(0)}\" hedges (Koray rule 2: be certain)",
+                         "state it as a fact with its condition, or as an instruction (\"Do X if Y\")")
+            m = self.OPINION.search(plain)
+            if m:
+                self.add("K11-opinion", "block", b, s, f"\"{m.group(0)}\" is opinion phrasing (Koray rule 2)",
+                         "state the decision rule as a fact: \"<option> suits <case>\"")
+            m = self.VAGUE.search(plain)
+            if m and not re.search(r"\d|such as|including|for example|e\.g\.|:|like [A-Z]", plain):
+                self.add("K12-vague-quantity", "block", b, s, f"\"{m.group(0)}\" with no number and no examples "
+                         "(Koray rules 4, 5, 7)", "give the count from a fact, or name the members (\"such as A, B and C\")")
+            m = self.FLUFF.search(plain)
+            if m:
+                self.add("K13-fluff", "block", b, s, f"\"{m.group(0)}\" carries nothing (Koray rule 3)", "cut it")
+            if re.search(r"(?i),\s*according to [^,.;]{3,60}[.!]?$", plain.strip()):
+                self.add("K15-source-last", "warn", b, s, "the source is tacked on at the end",
+                         "credit the source first (\"According to X, …\" or \"X sets …\"), once per paragraph")
+        # list items start with the same part of speech (rule 8)
+        groups, cur = [], []
+        for blk in self.blocks:
+            if blk["type"] == "li":
+                cur.append(blk)
+            elif cur:
+                groups.append(cur)
+                cur = []
+        if cur:
+            groups.append(cur)
+        try:
+            from .nlp import _nlp
+            nlp = _nlp()
+        except Exception:
+            nlp = None
+        for g in groups:
+            if len(g) < 3 or nlp is None:
+                continue
+            kinds = []
+            for blk in g:
+                text = re.sub(r"^\W+", "", blk["text"])
+                if re.match(r"^[^:.,]{1,40}:\s", text) and nlp(text)[0].tag_ not in ("VB", "VBP"):
+                    kinds.append("other")  # "Arrangement fee: a fee charged…" is a labelled (noun) item
+                    continue
+                # a leading time, place or purpose phrase ("Once the paint is dry, look…") is not the item's head
+                text = re.sub(r"(?i)^(once|when|after|before|while|until|in|on|for|to|with|at|during)\b[^,]{0,70},\s+", "",
+                              text)
+                first = text.split(" ")[0]
+                if not first:
+                    continue
+                tok = nlp(text)[0]  # the whole item: its object tells a verb from an adjective
+                low = first.lower()
+                if low.endswith("ing") or tok.tag_ == "VBG":
+                    kinds.append("gerund")
+                elif tok.tag_ in ("VB", "VBP") or (tok.tag_ not in ("DT", "PRP", "PRP$", "NNPS", "CD", "JJ", "IN")
+                                                   and nlp(f"you {low} it")[1].tag_ in ("VBP", "VB")):
+                    # spaCy often tags a line-initial imperative as a noun ("Sand rough patches"): "you sand it" settles it
+                    kinds.append("verb")
+                else:
+                    kinds.append("other")
+            if "verb" in kinds and kinds.count("verb") != len(kinds) and kinds.count("verb") >= len(kinds) / 2:
+                self.add("K14-list-mixed", "block", g[0], g[0]["text"][:100], "list items don't start with the same part of "
+                         "speech (Koray rule 8)", "start every item the same way: all instructions (verbs) or all nouns")
 
     def r_claims_of_scale(self):
         """Counts and superlatives must come from computed lists, not from eyeballing a table."""
@@ -1560,13 +1658,14 @@ class Linter:
                     continue
                 h = {w for w in tokens(cur["text"], syn) if w not in STOP and len(w) > 2}
                 f = {w for w in tokens(first, syn) if w not in STOP and len(w) > 2}
-                if len(h) >= 3 and len(h & f) / len(h) >= 0.9:
+                # Koray rule 9 wants the heading's terms in the answer: only a restatement that adds nothing is an echo
+                if len(h) >= 3 and len(h & f) / len(h) >= 0.9 and len(f - h) < 4 and not re.search(r"\d", first):
                     echo.append((b, first))
                 cur = None
         if len(echo) >= 4:
             for b, s in echo:
                 self.add("H08-heading-echo", "warn", b, s, f"{len(echo)} sections open by restating their heading",
-                         "open with the number, the condition, the action or the reason instead")
+                         "keep the heading's terms but add the answer: the number, the condition or the action (Koray rule 9)")
 
     def r_repeats(self):
         syn = self.b.get("synonyms") or {}
@@ -2031,8 +2130,8 @@ class Linter:
         if round(sd, 1) < target:
             self.add("E03-rhythm", "warn", None, f"sentence-length SD {sd:.1f}, mean {mean:.1f}",
                      f"rhythm is more even than the human pages that rank (target SD ≥ {target:.1f})",
-                     "join related ideas into longer, clause-rich sentences (a reason, a condition, a contrast); "
-                     "don't reach for fragments")
+                     "keep most sentences short and declarative (Koray), and give some their condition or reason "
+                     "(\"Do X if Y\", \"because…\") so lengths vary; don't reach for fragments")
         firsts = Counter((re.findall(r"[A-Za-z']+", s) or [""])[0].lower() for b, s in self.prose() if b["type"] == "p")
         top, cnt = firsts.most_common(1)[0]
         if cnt >= 5 and cnt / len(lens) >= 0.25:
@@ -2045,9 +2144,9 @@ class Linter:
             self.add("E04-fragments", "warn", None, f"{short:.0%} of sentences under 8 words",
                      f"more clipped sentences than the human pages that rank (cap {cap:.0%}); punchy one-liners read as "
                      "rewritten AI copy", "merge most of them into the sentence they introduce or explain")
-        if mean < 13:
+        if mean > 22:
             self.add("E03-rhythm", "warn", None, f"mean sentence length {mean:.1f}",
-                     "sentences are choppy (RULES target 15–20 on average)", "join related short sentences")
+                     "sentences run long (Koray: short declarative sentences, one idea each)", "split at the clause boundary")
 
     def r_research(self):
         """Checks against the research plugins: PAA coverage, query routing, entity coverage."""

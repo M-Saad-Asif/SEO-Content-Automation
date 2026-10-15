@@ -43,27 +43,27 @@ Load once per run. `seo.py lint` checks most of these mechanically; the rest are
 
 - State verified facts in your own words, as the page's author. Put the source link on the claim itself (an inline link on the words the reader would want to check) or in the sources line at the end.
 - Name a source in the sentence only when the reader needs to know who says it: an opinion, a study's finding, a surprising or contested claim, or who sets a rule. Keep it to about one named attribution per section. "According to X… X adds… X notes…" in every paragraph reads as a research paste.
-- Give judgement. For every decision the reader faces, say what you recommend and why, reasoned from the facts: which figure to aim for, which option suits whom, when to stop and get help. The reasoning is yours; the numbers come from the pack.
+- Give judgement as declarations (Koray rule 2): for every decision the reader faces, state the decision rule, reasoned from the facts: which figure to aim for, which option suits whom, when to stop and get help ("Oil-based paint suits a fence that faces driving rain", "Book an engineer when the pressure drops below 1 bar"). Never "we'd recommend", "we think", "you should". The reasoning is the page's; the numbers come from the pack.
 - Add something the top pages don't have: a worked example built from the facts, a comparison table, a decision rule, the client's own data. That is the page's information gain.
-- When you explain a check or a test, give every outcome: what passing looks like, what failing looks like, and what to do next in each case, in plain sentences ("If the paint drags, wait for a warmer day"), never as "Pass:/Fail:" labels.
+- When you explain a check or a test, give every outcome: what passing looks like, what failing looks like, and what to do next in each case, in plain sentences with the condition second ("Wait for a warmer day if the paint drags"), never as "Pass:/Fail:" labels.
 - Forums and reviews are evidence of experience, never of rules or numbers. Use one only when the pack quotes a real comment from readers like this page's (same country, same situation), link the comment, and attribute it plainly. Never quote a forum without its link, never on a YMYL page as support for advice, and never write "people on Reddit say…" without a quote behind it.
 - On informational pages, tie the client in briefly where it is true and useful. On commercial pages, the opening, process, proof and closing action follow section 0; do not limit the offer to one incidental sentence.
-- State conditions the way people do: "If you rent, …", not "When you rent, …" for a case that may not apply.
+- Conditions come second (Koray rule 10): the declaration or instruction first, then "if …" ("Claim the relief through your tax return if you pay higher-rate tax"). Use "if" for a case that may not apply, "when" for one that will.
 - Write as the client's page. Where the client's products, services or guides help the reader take the next step, link them naturally inside the relevant section (see section 6). Don't end with a list of links.
 - Describe the client's own product or service directly, from its approved claims ("Acme sells refurbished laptops with a 12-month warranty"). Never quote the client's own tagline back at the reader in the third person ("X's site invites you to…"), and link a client claim only to the page the pack lists as its source.
 - Prefer independent sources (authorities, charities, professional bodies, research) over a competitor of the client for links. A page-one point about the topic (section 1.25) is stated in your own words with no link to the competitor. A fact about a competitor's own product or offer (its price, its feature) is attributed as theirs, limited to their product, never the main answer and never the first link on the page.
 - When the client publishes its own method, plan or figures for this question, the page leads with the client's way, in the client's voice; other sources are comparisons or support. Name a source only where it adds weight, not on every step.
-- When sources disagree (one says N days, another 2N), say which you recommend and why, in one sentence. Never leave the reader to reconcile them.
+- When sources disagree (one says N days, another 2N), the brief has settled it (the majority of ranking sites, or the authority): state that value as fact. Never leave the reader to reconcile them.
 - Never mention the research itself ("the top results", "ranking pages", "most guides online"). State the facts in your own words, as the page's author.
 - Questions about a competitor's product ("Is <competitor> a …?") are not sections on the client's page. Mention the competitor where a comparison helps, at most.
 
 ## 3. Sentences
 
-- Average 15–20 words, with real variation from longer sentences that carry a condition or a reason, not from fragments. Keep sentences under 8 words to about one in ten. Never answer a heading with a verbless fragment. Most sentences stay under 30 words; about one in ten can run to 35–40 when it carries a list, a condition or a contrast clearly.
-- The first paragraph under a question heading (and under a question-form H1) is the snippet answer: 40–50 words in 2–3 sentences, answering directly. Supporting detail goes after it and adds to the answer (the how, the numbers, the exceptions); it never restates the answer as a list. The first sentence gives the answer the reader should act on (the recommended time, the figure to aim for), not only the widest range a source allows; the range and exceptions follow. A yes/no question gets the true yes or no inside the first sentence ("No, you can't…"), never as a one-word sentence; open with "Yes,"/"No," in at most two sections and let the others lead with the fact itself.
+- Short, declarative sentences, one idea each and no nested clauses (Koray): average about 12–18 words, with real variation from longer sentences that carry a condition or a reason, not from fragments. Keep sentences under 8 words to about one in ten. Never answer a heading with a verbless fragment. Most sentences stay under 30 words; about one in ten can run to 35–40 when it carries a list, a condition or a contrast clearly.
+- The first paragraph under a question heading (and under a question-form H1) is the snippet answer: about 40 words (35–45) in 1–3 sentences, answering directly (Koray rule 12). Supporting detail goes after it and adds to the answer (the how, the numbers, the exceptions); it never restates the answer as a list. The first sentence gives the answer the reader should act on (the recommended time, the figure to aim for), not only the widest range a source allows; the range and exceptions follow. A yes/no question gets the true yes or no inside the first sentence ("No, you can't…"), never as a one-word sentence; open with "Yes,"/"No," in at most two sections and let the others lead with the fact itself.
 - No teaser sentences that announce a point instead of making it ("The method has one limit worth knowing.", "Here is a worked example.", "The risk is real."). Make the point.
 - Answer in natural language. Never paste the query or a heading into a sentence as an embedded question ("The question of how much X should I buy has no single answer" is wrong).
-- Vary how sections open. Lead with the number, the condition, the action or the reason; don't open every section by restating its heading as a statement. Never twist word order to avoid that ("Lower bills are the main benefit of insulation" is an inversion; "Insulation lowers your bills" is natural).
+- The first sentence under a heading answers it in the heading's own terms (Koray rule 9), and it carries the answer itself: the number, the condition, the action or the reason. A sentence that only restates the heading adds nothing. Never twist word order to avoid that ("Lower bills are the main benefit of insulation" is an inversion; "Insulation lowers your bills" is natural).
 - Name the actor. An opening "-ing", "-ed", "At [number]" or "When/If + participle" phrase must describe the subject of the main clause and relate to its claim. When in doubt, write two plain sentences.
 - No trailing commentary clauses (", making it ideal…", ", allowing you to…", ", ensuring…").
 - Don't open with a vague "This", "It" or "These" + verb. Name the thing.
@@ -85,10 +85,22 @@ Load once per run. `seo.py lint` checks most of these mechanically; the rest are
 - Vary section shapes. Some sections are a short paragraph; one might be a table or steps.
 - No meta-commentary about the page: "below", "above", "this guide", "the sections that follow", "as covered earlier".
 - No colon reveals ("The catch: …", "X puts it simply: …"), no negative parallelism ("not X, it's Y" and "X rather than Y" together at most twice per page), no rule-of-three padding, no ceremonial intro, no closing summary, no closing moral ("…matters more than the label").
-- Use bold sparingly; no "**Label:** text" bullets.
+- Bold only the answer (Koray rule 13), never the search term; no "**Label:** text" bullets.
 - Avoid the banned and limited words in `scripts/lexicon.yaml` and the brief's `banned_phrases`. Say the specific thing instead of swapping in another inflated word.
 - No internal codes, SKUs or supplier references.
 - At most one em dash per 150 words. No exclamation marks (a brand name that contains one is fine).
+
+### Human ideas (University of Maryland / Google DeepMind: StoryScope, IdeaLens; `plugins/humanize/SKILL.md`)
+
+The research found that what separates AI from human writing is the ideas and the structure, not the word choice: swapping words barely changes how AI a text reads. So:
+
+- Every sentence carries something only this page could say: a figure with its context, a named source, product, place or entity, or the case it applies to (HU01).
+- State the limits: when the advice doesn't apply, who it doesn't suit, what it costs or what it can't do (HU08).
+- Name and link the source; never "experts say", "studies show", "research suggests" (HU04).
+- No perfect, hassle-free, all-needs or one-stop solutions (HU02); no forecasts that cannot be wrong ("will always", "is set to transform") (HU03).
+- No made-up examples used as proof ("Imagine…", "Meet Sarah, a…"); a worked example uses the brief's real figures (HU05).
+- Never state the lesson ("The key takeaway…", "Ultimately,…", "The bottom line…"): the facts make the point (HU06). A reason adds something new, never the claim again (HU07).
+- The outline comes from the page plan, which is built from the ranking pages people wrote; vary section shapes rather than repeating one template.
 
 ## 6. Structure, headings and links
 
@@ -119,21 +131,30 @@ Load once per run. `seo.py lint` checks most of these mechanically; the rest are
   - **company** (about, contact): facts about the client only, from its own pages.
   - **guide** complete for the reader's decision; **hub** short, linking child pages; **spoke** specific to one entity or task; **product-guide** products first, each with a data-derived limitation.
 - Every URL comes from the "Links you may use" section of the pack. Never guess, shorten or rebuild a URL.
-- Link products to their own pages, never to a collection. Link an authority where its rule or figure is used (on a guide, also where the reader acts there; on a commercial page the main CTA belongs to the client while necessary official actions remain accurate). Use descriptive anchors of 2–6 words that name the target page (its title, not your sentence). Link each source page once, on the first sentence that credits it; later claims from it name the source without linking again. When you credit a publisher whose other page you linked more recently, link the page this claim is on: "the RHS says" sends the reader to the nearest RHS link, so that link must be the page that says it. Never link one page more than twice, and contextual client pages once each; a main commercial CTA may appear near the opening and close. Never link the client's existing page on this same query: this page replaces it.
+- Link products to their own pages, never to a collection. Link an authority where its rule or figure is used (on a guide, also where the reader acts there; on a commercial page the main CTA belongs to the client while necessary official actions remain accurate). The anchor is the target page's title or its head phrase (Koray rule 11), not your sentence. Link each source page once, on the first sentence that credits it; later claims from it name the source without linking again. When you credit a publisher whose other page you linked more recently, link the page this claim is on: "the RHS says" sends the reader to the nearest RHS link, so that link must be the page that says it. Never link one page more than twice, and contextual client pages once each; a main commercial CTA may appear near the opening and close. Never link the client's existing page on this same query: this page replaces it.
 - Put an internal link on the words in a sentence that already says something useful; don't add a sentence whose only job is to carry a link ("X's guide to Y shows how."). Keep internal links to about one per 150 words, and don't end most sections the same way.
 - Stay within the word range. A guide should cover what the top pages agree on, so if the draft is well under the pack's median length, check the topic list for gaps before you finish.
 
-## 7. Algorithmic authorship (Koray, harmonised with the rules above)
+## 7. Algorithmic authorship (Koray Tuğberk Gübür; where any rule in this file conflicts, these win)
 
-- **Declaration first.** The first sentence under a heading answers it directly, in natural word order: the thing asked about, the action or the number as subject, whichever a person would say. Put conditions after the declaration unless the answer depends on them (rule 1.7).
-- **Certainty with parameters.** State facts plainly; hedge only when the source does, and name the condition. Counts are followed by their members: "two conditions apply: A and B".
-- **Define and connect.** Expand acronyms on first use unless they are brand names. Say how entities relate with a precise verb. Cover the pack's must-cover entities with their attributes and values.
-- **One macro context, macro to micro.** No generic "Introduction", "Overview" or "Conclusion" headings. A compact FAQ with specific H3 questions is allowed on commercial pages.
-- **Paragraphs.** 2–4 sentences, one idea each. List items start with the same part of speech. Number a list only when its items are steps done in order; alternatives (method A, method B or method C) are bullets or a table.
-- **Reasons add information.** "Replace it within five years, because it lasts up to five years" restates itself; give the reason that the reader didn't already have, or none.
-- **Bold the answer, not the keyword.** At most one bold per section.
-- **Serve the task, then support it.** Lead with the answer or relevant offer this page exists to provide. Cover relevant shared topics and verified useful gaps where they help the reader; competitor consensus and order are evidence leads, not instructions that override page purpose.
-- **Responsiveness test.** For every H2 question and the target query, you can point to the one sentence that answers it.
+From his "Holistic SEO Writing System" (rules 1–14) and his semantic content writing rules. `docs/RULES_MAP.md` maps every pipeline rule to these.
+
+1. **Word sequence.** The main subject and its defining attributes first, extra attributes after ("A penguin is a flightless seabird that lives almost exclusively below the equator, and it has flippers instead of wings").
+2. **Be certain.** Declarative facts, not opinions or modal hedges: no "should", "need to", "might", "could possibly", "it seems", "we think", "we'd recommend". A rule that depends on a case states the case as a condition, not as a hedge ("Drying takes longer below 10 °C").
+3. **Cut the fluff.** Every sentence carries information; no announcements ("This article discusses…"), no filler words ("basically", "actually", "in order to", "it is important to note that", "needless to say").
+4. **Numeric values.** A number instead of "many", "several", "various", "a lot of" ("5 main reasons", not "many reasons").
+5. **Qualify the instances.** Say which and how many: "the 3 severe symptoms", not "the symptoms".
+6. **Verbs that fit the context.** The verb the field uses ("improves health", "develops skills"; "a dietician" not "a doctor" for a diet plan).
+7. **Examples after a plural noun.** "…such as Bitcoin, Ethereum and Litecoin" right after "cryptocurrencies".
+8. **Same part of speech in lists.** Every item starts the same way (all verbs, or all nouns).
+9. **The first sentence under a heading answers it** with the heading's own terms ("To improve website speed, optimise images, minimise HTTP requests and enable browser caching").
+10. **"If" goes second.** Declaration or instruction first, condition after.
+11. **Anchor text matches the target page's title** (or its H1 head phrase), never "click here" or a sentence fragment.
+12. **Don't delay the answer.** No background before it; the answer leads (about 40 words under each question heading).
+13. **Bold the answer, not the search term.**
+14. **Relevant entities and specific, semantically related words** ("cardiovascular health, muscle strength" not "your health and body"); every entity the section needs, defined and connected with a precise verb.
+
+Also from his semantic content rules: one macro context per page, macro to micro (definition, then how it works, then specifics, then related topics); H2s written as the reader's question (a "How to…" task counts); no skipped heading levels; one H1 with the central entity; no "Introduction", "Overview" or "Conclusion"; credit a source before the claim, once per paragraph; contextual bridges between sections are sentences that relate the two topics (never an empty "next, we'll look at"); facts over opinions, analogies and everyday filler; internal links in the main content only within the macro context.
 
 ## 8. Rankability
 
@@ -145,7 +166,7 @@ Load once per run. `seo.py lint` checks most of these mechanically; the rest are
 
 AI answers (Google AI Overviews, ChatGPT, Perplexity, Gemini) quote passages, not pages. Write every answer so it can be lifted on its own and still be right.
 
-- **Self-contained answers.** The first paragraph under a question heading answers it directly; guide snippet answers aim for 40–60 words and makes sense with nothing else around it: name the subject in full ("A stocks and shares ISA…", not "It…" or "This…"), and carry the condition and the figure in the same paragraph.
+- **Self-contained answers.** The first paragraph under a question heading answers it directly; the answer is about 40 words (Koray rule 12) and makes sense with nothing else around it: name the subject in full ("A stocks and shares ISA…", not "It…" or "This…"), and carry the condition and the figure in the same paragraph.
 - **One-sentence definition.** Early on, define the main entity as "X is a Y that Z", in the reader's words, with the attribute that sets it apart.
 - **A sourced figure early.** Where the topic has a defining number (a limit, a rate, a dose, an allowance), give it with its source and date in the first 300 words.
 - **Quote where wording matters.** For a rule or an official definition, quote the authority's exact words in quotation marks, name it and link it. One or two such quotes a page; everything else in your own words.

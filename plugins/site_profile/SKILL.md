@@ -18,7 +18,7 @@ Only main-content paragraphs of 12+ words count. Navigation, footers and forms a
 
 | Measure | How the writer uses it |
 |---|---|
-| Average sentence length | Aim near it, within RULES (15–20 average, cap about 30). A site averaging 11 words reads punchy, so keep sentences shorter |
+| Average sentence length | Aim near it, within RULES (12–18 average, Koray's short declarative sentences). A site averaging 11 words reads punchy, so keep sentences shorter |
 | Share of sentences with "you" | High means address the reader directly (the default). Low means a more neutral register |
 | Share with "we/our" | On service pages, "we" is fine if the site uses it. Elsewhere, use the client name |
 | Contractions per 100 sentences | Zero or low means avoid contractions. High means natural contractions are fine |

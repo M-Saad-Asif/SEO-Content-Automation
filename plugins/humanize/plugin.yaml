@@ -1,0 +1,8 @@
+name: humanize
+kind: check
+description: Humanization from the University of Maryland / Google DeepMind research on how AI and human writing differ (StoryScope, IdeaLens). The writer card prevents the AI idea patterns before drafting; lint rules HU01-HU08 catch what slips through (generic sentences that could sit on any page, perfect solutions, unconditional forecasts, unnamed authorities, made-up examples, stated lessons, circular reasons, a page with no limits). The page plan, built from the ranking pages' human outlines, is the strongest lever.
+entry: scripts/seolib/humanize.py
+needs: []
+modes: [deep]
+budget_s: 1
+outputs: [HU findings in lint.json]

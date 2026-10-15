@@ -616,10 +616,14 @@ def _next_flow(brief: dict, brief_path: str, rd: Path, st: dict, R: str, mode: s
             each = [f"Run folder: {R}",
                     f"The plan in {R}/write_brief.md (section 2) is split into parts {', '.join(p['id'] for p in parts)}. "
                     "Write them at the same time:",
-                    f"- Claude Code: start {len(parts)} `seo-writer` agents in ONE message (they run in parallel), one per "
-                    "part, each given the instructions below with its part letter.",
-                    "- Cursor, Codex, Antigravity and others: run parallel agents if your tool can; otherwise write the parts "
-                    "yourself one after another.",
+                    f"Start {len(parts)} `seo-writer` sub-agents in ONE turn (they run in parallel), one per part, each given "
+                    "the instructions below with its part letter. How, in each tool (the installer set the writer up in all):",
+                    "- Claude Code: the Agent tool with subagent_type `seo-writer`, all calls in one message.",
+                    "- Cursor: the `seo-writer` subagent, once per part, in one message.",
+                    "- Codex: \"spawn one `seo_writer` agent per part, wait for all of them\".",
+                    "- Antigravity and Gemini CLI: invoke the `seo-writer` subagent once per part, concurrently.",
+                    "- VS Code Copilot: the agent tool with `seo-writer`, once per part.",
+                    "- A tool without sub-agents (e.g. Windsurf): write the parts yourself, one after another.",
                     "",
                     "Instructions for the writer of part X:",
                     f"1. Read RULES_CARD.md and {R}/write_brief.md: sections 1, 3 and 4, and part X of section 2. Nothing else.",
@@ -652,7 +656,10 @@ def _next_flow(brief: dict, brief_path: str, rd: Path, st: dict, R: str, mode: s
     from .plan import check as plan_check
     sheet = C.load_json(rd / "fact_sheet.json")
     lm = C.load_json(rd / "link_map.json") or {}
-    md = draft.read_text(encoding="utf-8")
+    from .autofix import fix_text
+    md, n_fixed = fix_text(draft.read_text(encoding="utf-8"))  # Koray's mechanical rules, fixed by script, not by a round
+    if n_fixed:
+        draft.write_text(md, encoding="utf-8")
     mark(rd, "lint", "start")
     try:
         res = lint_text(md, sheet, lm, load_research(rd))
@@ -703,13 +710,18 @@ def _next_flow(brief: dict, brief_path: str, rd: Path, st: dict, R: str, mode: s
     if not (rd / "eval.md").exists() or (rd / "eval.md").stat().st_mtime < final.stat().st_mtime:
         from .evaluate import evaluate
         _quiet(evaluate, rd)
+    try:
+        from .schema import build as build_schema
+        build_schema(rd)  # JSON-LD naming the page's central entity and the entities it covers
+    except Exception as e:  # structured data is a bonus; never fail a finished page on it
+        print(f"note: schema.json not written ({e})")
     st["done"]["complete"] = C.now_iso()
     _save_state(rd, st)
     if brief.get("batch_plan"):
         from .batch import next_page
         print(f"PAGE COMPLETE: {R}/final.md")
         return next_page(brief["batch_plan"], mode, {"id": brief["batch_item"], "result": str(rd / "final.md")})
-    t = (C.load_json(rd / "timing.json") or {}).get("events") or []
+    t =(C.load_json(rd / "timing.json") or {}).get("events") or []
     took = f" in {int(t[-1]['t'] - t[0]['t']) // 60} min {int(t[-1]['t'] - t[0]['t']) % 60} s" if len(t) > 1 else ""
     print(SEP)
     print("DONE" + took)
