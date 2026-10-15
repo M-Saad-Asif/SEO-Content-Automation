@@ -567,23 +567,8 @@ def prep(brief_path: str, refresh: bool = False, quiet: bool = False, timing: bo
     # the client's own pages on this topic: same-topic pages (cannibalisation), related guides, next-step pages
     rel = related(clean_internal(sm_urls, brief.get("locale") or "en-GB"), brief["target_query"],
                   brief.get("synonyms"), exclude=page_url)
-    try:
-        from . import serper
-        sres, _cr = serper.batch([("search", f"site:{domain} {brief['target_query']}")], brief.get("locale") or "en-GB")
-        found = [re.sub(r"[?&](srsltid|utm_\w+|gclid|fbclid)=[^&#]*", "", o.get("link", "").split("#")[0]).rstrip("?&")
-                 for r in sres.values() for o in r.get("organic", [])[:5] if o.get("link")]
-        found = [u for u in clean_internal(found, brief.get("locale") or "en-GB")
-                 if u.rstrip("/") != page_url.rstrip("/") and not re.search(r"/(products?|collections?)/", u)]
-        cls = related(found[:5], brief["target_query"], brief.get("synonyms"), exclude=page_url)
-        for u in cls["same_topic"]:
-            if u not in rel["same_topic"]:
-                rel["same_topic"].append(u)
-        for u in found[:3]:
-            if u not in rel["guides"] and u not in rel["same_topic"]:
-                rel["guides"].insert(0, u)
-        link_map["internal"] = list(dict.fromkeys(link_map["internal"] + found[:3]))
-    except Exception as e:  # no key or no network: the sitemap match still stands
-        print(f"  client site search skipped ({type(e).__name__})")
+    # (a "site:client query" Google search used to add to the sitemap match; it is off under the 3-credit cap, where
+    # it raced the main search for a credit: the sitemap and the client's link map find its pages for free)
     offered = list(dict.fromkeys(rel["same_topic"] + rel["guides"] + rel["commercial"]))
     # one round for every client page this step reads (related pages, and the pages the offer model reads), short
     # limits and no retry: they help the page, none is worth waiting on (sequential rounds of 12 s with a retry made

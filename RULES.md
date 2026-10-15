@@ -151,6 +151,8 @@ From his "Holistic SEO Writing System" (rules 1–14) and his semantic content w
 8. **Same part of speech in lists.** Every item starts the same way (all verbs, or all nouns).
 9. **The first sentence under a heading answers it** with the heading's own terms ("To improve website speed, optimise images, minimise HTTP requests and enable browser caching").
 10. **"If" goes second.** Declaration or instruction first, condition after.
+
+**Habits, not a template (operator's rule).** Rules 2, 4, 8, 10 and 11, the question-heading rule and sentence length are applied as a human expert applies them: mostly, not in every sentence. Each has an allowance per page (`lint.Linter.ALLOWANCE`: "If…" openers about one per 500 words and at least 3; hedges and vague counts about one per 600 words; 40% of H2s may be statements; one mixed list; one long sentence or long answer per 1,000 words; passive voice about 2 a page). Up to the allowance they are logged, not sent back; past it the extra ones go back. The first sentence under a heading always answers directly: no "If…" opener, hedge, opinion or vague count there. Rules for what reads as AI (section 5, humanization), accuracy, links and honesty have no allowance.
 11. **Anchor text matches the target page's title** (or its H1 head phrase), never "click here" or a sentence fragment.
 12. **Don't delay the answer.** No background before it; the answer leads (about 40 words under each question heading).
 13. **Bold the answer, not the search term.**

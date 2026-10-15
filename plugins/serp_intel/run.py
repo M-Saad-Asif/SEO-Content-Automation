@@ -98,18 +98,16 @@ YMYL_TOPIC = re.compile(
 def run(ctx):
     b = ctx.brief
     q = b["target_query"]
-    from seolib import spider
+    from seolib import spider, suggest
+    # one paid search: the top 10, People Also Ask, related searches and the answer box come back together;
+    # autocomplete is Google's free suggestion service (seolib/suggest.py), never a paid call
     if spider.provider() == "spider":
-        # Spider lists organic results only; autocomplete still comes from Serper when a Serper key exists
         main = spider.search(q, b["locale"])
-        first = {("search", q): main, ("autocomplete", q): {}}
-        if serper.api_key():
-            ac, cr = serper.batch([("autocomplete", q)], b["locale"])
-            ctx.credits += cr
-            first[("autocomplete", q)] = ac.get(("autocomplete", q), {})
     else:
-        first, cr = serper.batch([("search", q), ("autocomplete", q)], b["locale"])
+        got, cr = serper.batch([("search", q)], b["locale"])
         ctx.credits += cr
+        main = got[("search", q)]
+    first = {("search", q): main, ("autocomplete", q): suggest.as_serper(suggest.many([q], b["locale"]).get(q, []))}
     main = first[("search", q)]
     if main.get("error"):
         return {"error": main["error"]}
@@ -136,7 +134,7 @@ def run(ctx):
         # Commonwealth, then US); organic results stay local. Other languages never borrow English questions: their
         # local autocomplete questions below are the question data.
         um = {}
-        for borrow in (["en-GB", "en-US"] if not b["locale"].lower().endswith("-gb") else ["en-US"]):
+        for borrow in (["en-GB"] if not b["locale"].lower().endswith("-gb") else ["en-US"]):  # one search (3-credit cap)
             got, cr = serper.batch([("search", q)], borrow)
             ctx.credits += cr
             um = got[("search", q)]
@@ -160,13 +158,13 @@ def run(ctx):
     if not paa:
         decisions.append(f"Google shows no People Also Ask box for \"{q}\" in {b['locale']}; questions come from "
                          "the PAA boxes of the closest autocomplete variants instead.")
-    # Deep mode follows PAA one level down, or uses the PAA of autocomplete variants when the main SERP has none.
+    # One search follows People Also Ask one level down (or the closest autocomplete variant when the main SERP has
+    # none), unless the questions were already borrowed from another market's SERP. Most PAA questions are covered
+    # by the top 10 pages, which are read in full; the 3-credit cap (seolib/serper.py) keeps the rest for the
+    # official sources.
     exp_queries = []
-    if ctx.deep():
-        exp_queries = paa[:2] if paa else [a for a in auto if len(a.split()) >= len(q.split())][:3]
-        # Related query text is not a URL. Look up a bounded set in the same search wave to obtain actual
-        # source URLs, while retaining every related query in the demand inventory.
-        exp_queries = list(dict.fromkeys(exp_queries + related[:2]))
+    if ctx.deep() and paa_locale == b["locale"]:
+        exp_queries = (paa[:1] if paa else [a for a in auto if len(a.split()) >= len(q.split())][:1])
     expansions = {}
     if exp_queries:
         more, cr = serper.batch([("search", e) for e in exp_queries], paa_locale)
@@ -181,26 +179,8 @@ def run(ctx):
                              "organic": [o.get("link") for o in r.get("organic", [])[:10]]}
             for p in r.get("peopleAlsoAsk", []):
                 paa_answers.setdefault(p.get("question"), {"snippet": p.get("snippet"), "link": p.get("link")})
-    # Serper now returns PAA questions without their answers: look each one up, keep the top result as a lead
-    # (a source to verify and cite, never a fact by itself).
-    bare = [p for p in (paa + [x for v in expansions.values() for x in v["paa"]])
-            if p and not (paa_answers.get(p) or {}).get("snippet")][:8 if ctx.deep() else 4]
-    if bare:
-        # the questions may be borrowed from another locale's SERP, but the answers must be this reader's
-        ans, cr = serper.batch([("search", p) for p in bare], b["locale"])
-        ctx.credits += cr
-        for (_, p), r in ans.items():
-            top = next((o for o in r.get("organic", []) if o.get("snippet")
-                        and kind(o.get("link", "")) not in ("video", "forum_ugc", "image", "app_store")
-                        and not foreign(o.get("snippet", ""), b["locale"])
-                        and not re.search(r"\b(free trial|sign up|get started|start (learning|your)|book a demo|learn more|"
-                                          r"buy now|shop now|request a quote|try (it )?free)\b", o.get("snippet", ""), re.I)), None)
-            ab = r.get("answerBox") or {}
-            if (ab.get("snippet") or ab.get("answer")) and not foreign(ab.get("snippet") or ab.get("answer") or "", b["locale"]):
-                paa_answers[p] = {"snippet": ab.get("snippet") or ab.get("answer"), "link": ab.get("link") or (top or {}).get("link"),
-                                  "from": "answer box"}
-            elif top:
-                paa_answers[p] = {"snippet": top["snippet"], "link": top["link"], "from": "top result"}
+    # PAA answers are not looked up one by one any more (8 paid searches a run): the top 10 pages, read in full,
+    # and the information-gain researchers answer them; Google's own PAA snippets are kept where Serper gives them.
     # The questions people type in this market, in its language (question-prefixed autocomplete, as AnswerThePublic
     # does): always in deep mode, because they are local search demand in every country, PAA box or not.
     question_ac = []
@@ -208,12 +188,11 @@ def run(ctx):
     if ctx.deep() or no_paa:
         words = QUESTION_WORDS.get(lang, QUESTION_WORDS["en"])
         prefixes = words[:6] if ctx.deep() else words[:2]
-        qs, cr = serper.batch([("autocomplete", f"{pre} {q}") for pre in prefixes], b["locale"])
-        ctx.credits += cr
+        qs = suggest.many([f"{pre} {q}" for pre in prefixes], b["locale"])  # free
         qrx = re.compile(r"(" + "|".join(re.escape(w) for w in words) + r")\b", re.I)
-        for (_, _pq), r in qs.items():
-            for s in r.get("suggestions", []):
-                v = (s.get("value") or "").strip()
+        for _pq, sugg in qs.items():
+            for v in sugg:
+                v = (v or "").strip()
                 if v and len(v.split()) >= 4 and v not in question_ac and qrx.match(v) and not foreign(v, b["locale"]):
                     question_ac.append(v)
         question_ac = question_ac[:20]

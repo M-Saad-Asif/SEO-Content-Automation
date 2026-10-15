@@ -31,11 +31,13 @@ Before that time has passed, the UKVI contact centre can't help. Staff give an u
 1. UKVI has taken longer than usual to process your application.
 2. UKVI has not already contacted you about your application.
 
-Even then, staff cannot tell you when you will get a decision.
+Even then, [GOV.UK](https://www.gov.uk/contact-ukvi-inside-outside-uk/y/outside-the-uk/checking-when-you-will-get-your-visa-decision) is plain about it: "UKVI contact centre staff cannot tell you when you will get your visa decision".
 
 ## When is a paid UKVI query worth it?
 
 Only once your application has passed its usual processing time and UKVI hasn't emailed or written to you. From outside the UK, every query costs money, so an early one buys nothing. An email query is usually the better choice.
+
+I'd send one email query and skip the phone line. The email costs £2.74 and follow-ups about it are free, while a call runs at 69 pence a minute for an update that has to meet the same two conditions.
 
 | Route | Cost from outside the UK | What you get |
 |---|---|---|
@@ -52,7 +54,7 @@ To [set up a UKVI account](https://www.gov.uk/evisa/set-up-ukvi-account), you ca
 
 You check online on the State Department's [CEAC Visa Status Check](https://ceac.state.gov/CEACStatTracker/Status.aspx). Enter your CEAC barcode or case number and the location where your interview took place. The barcode is the application ID from your DS-160 application.
 
-If the consulate asked you for more information, wait at least three business days after sending it before you check again. The [United States](https://masterfastvisas.com/visa-status-check/usa) page covers the details for each step.
+If the consulate asked you for more information, wait at least three business days after sending it before you check again. The [US Visa Status Check](https://masterfastvisas.com/visa-status-check/usa) page covers the details for each step.
 
 ## What does "Refused" under 221(g) mean?
 

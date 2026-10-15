@@ -403,6 +403,81 @@ class Linter:
             elif b["type"].startswith("h") and include_headings:
                 yield b, b["text"]
 
+    # Style rules are an allowance per page, not a ban per sentence (operator, 16 Oct 2026): a human expert opens a
+    # few sentences with "if", hedges once or twice, writes a statement heading or a passive sentence now and then.
+    # Up to the allowance these are logged, not sent back; past it, the extra ones go back to the writer. The first
+    # sentence under a heading (or of the page) is the direct answer, so a hedge, an "If…" opener, an opinion or a
+    # vague count there always goes back. Rules for what reads as AI, accuracy, links and honesty have no allowance.
+    ALLOWANCE = {
+        "K04-if-opener": lambda w, h2: max(3, round(w / 500)),
+        "K10-hedge": lambda w, h2: max(2, round(w / 600)),
+        "K11-opinion": lambda w, h2: 2,
+        "K12-vague-quantity": lambda w, h2: max(2, round(w / 600)),
+        "K14-list-mixed": lambda w, h2: 1,
+        "K09-anchor": lambda w, h2: max(1, round(w / 1000)),
+        "H03-question-heading": lambda w, h2: int(0.4 * h2),
+        "S01-long-sentence": lambda w, h2: max(1, round(w / 1000)),
+        "S02-snippet-length": lambda w, h2: max(1, round(w / 1000)),
+        "S08-passive": lambda w, h2: max(2, round(w / 1000)),
+    }
+    FIRST_ONLY = {"K04-if-opener", "K10-hedge", "K11-opinion", "K12-vague-quantity"}
+
+    def apply_allowances(self):
+        n_words = len(words(" ".join(b["text"] for b in self.blocks if b["type"] in ("p", "li", "tr")))) or 1
+        n_h2 = sum(1 for b in self.blocks if b["type"] == "h2")
+        first = {}  # line of the first paragraph under each heading (and of the page) -> its first sentence
+        after_heading = True
+        for b in self.blocks:
+            if b["type"].startswith("h"):
+                after_heading = True
+            elif b["type"] in ("p", "li") and after_heading:
+                first[b["line"]] = (sentences(b["text"]) or [""])[0]
+                after_heading = False
+        for rule, fn in self.ALLOWANCE.items():
+            hits = [f for f in self.findings if f["rule"] == rule and f["severity"] == "block"]
+            if not hits:
+                continue
+            cap = fn(n_words, n_h2)
+            hard = [f for f in hits if rule in self.FIRST_ONLY and f["line"] in first
+                    and first[f["line"]][:60].strip() and f["text"][:60].strip() == first[f["line"]][:60].strip()]
+            soft = [f for f in hits if f not in hard]
+            free = max(0, cap - len(hard))
+            for f in hard:
+                f["reason"] += " (the first sentence under a heading is the direct answer)"
+            for f in soft[:free]:
+                f["severity"] = "warn"
+                f["reason"] += f" (within this page's allowance of {cap})"
+            for f in soft[free:]:
+                f["reason"] += (f" ({len(hits)} on the page; up to {cap} read naturally on a page this long: "
+                                f"fix {len(hits) - cap if len(hits) > cap else len(soft) - free} of them)")
+
+    def r_passive(self):
+        """Passive voice (S08): a sentence whose subject receives the action ("The fence is painted by…"). A few
+        read naturally; the allowance is about 2 a page."""
+        try:
+            from .nlp import _nlp
+            nlp = _nlp()
+        except Exception:
+            return
+        units = [(b, s) for b, s in self.prose() if len(s.split()) >= 5]
+        texts = [re.sub(r"[\"“][^\"”]*[\"”]", "it", s) for _, s in units]
+        be = {"am", "is", "are", "was", "were", "be", "been", "being", "'re", "isn't", "aren't", "wasn't", "weren't"}  # not "'s": possessive
+
+        def passive(doc) -> bool:  # a form of "be", an optional adverb or "not", then a past participle (tagger only)
+            toks = list(doc)
+            for i, t in enumerate(toks):
+                if t.lower_ in be:
+                    for u in toks[i + 1:i + 4]:
+                        if u.tag_ == "VBN":
+                            return True
+                        if u.tag_ not in ("RB", "RBR", "RBS") and u.lower_ not in ("not", "n't"):
+                            break
+            return False
+        for (b, s), doc in zip(units, nlp.pipe(texts)):
+            if passive(doc):
+                self.add("S08-passive", "block", b, s, "passive voice", "name who does it: \"Councils set the fee\", "
+                         "not \"The fee is set by councils\"")
+
     def r_voice(self):
         """The author's first-person view (2-3 passages, top and middle, no invented experience), information gain
         and the GEO evidence checks (citations, quotations): seolib/voice.py."""
@@ -500,9 +575,10 @@ class Linter:
                    self.r_copy, self.r_attribution, self.r_heading_echo, self.r_embedded_query, self.r_repeats,
                    self.r_units, self.r_boundary, self.r_table_source, self.r_link_matches_figure,
                    self.r_named_source_unlinked, self.r_inherited_attribution, self.r_self_contained, self.r_heading_numbers, self.r_anchor_rules,
-                   self.r_yes_no_openers,
+                   self.r_yes_no_openers, self.r_passive,
                    self.r_misc):
             fn()
+        self.apply_allowances()
         order = {"block": 0, "warn": 1}
         self.findings.sort(key=lambda f: (order[f["severity"]], f["line"] or 0))
         for i, f in enumerate(self.findings, 1):

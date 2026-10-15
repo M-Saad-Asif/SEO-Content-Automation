@@ -38,34 +38,53 @@ def _invert_if(sentence: str) -> str:
     return f"{_cap(main)} if {cond}{end}"
 
 
-def fix_text(md: str) -> tuple[str, int]:
-    """(fixed markdown, number of changes). Headings, tables, front matter and code are left alone."""
-    out, n, in_front = [], 0, False
-    for i, line in enumerate(md.splitlines()):
+def _prose_lines(lines: list[str]):
+    """(index, prefix, sentences, first-under-a-heading) for each prose line; front matter, headings, tables, code
+    and quotes are skipped."""
+    in_front, after_heading = False, True
+    for i, line in enumerate(lines):
         if i == 0 and line.strip() == "---":
             in_front = True
-            out.append(line)
             continue
         if in_front:
-            out.append(line)
-            if line.strip() == "---":
-                in_front = False
+            in_front = line.strip() != "---"
             continue
-        if not line.strip() or line.lstrip().startswith(("#", "|", "```", ">")):
-            out.append(line)
+        if line.lstrip().startswith("#"):
+            after_heading = True
+            continue
+        if not line.strip() or line.lstrip().startswith(("|", "```", ">")):
             continue
         prefix = re.match(r"^(\s*(?:[-*]|\d+[.)])\s+)?", line).group(0)
-        body = line[len(prefix):]
-        parts = SENT.split(body)
+        yield i, prefix, SENT.split(line[len(prefix):]), after_heading
+        after_heading = False
+
+
+def fix_text(md: str) -> tuple[str, int]:
+    """(fixed markdown, number of changes). Headings, tables, front matter and code are left alone.
+
+    "If" openers are an allowance, not a ban (lint.ALLOWANCE: about one per 500 words, at least 3): only the one
+    that opens a section (the direct answer) and the ones past the allowance are turned round, so pages keep the
+    few a human writer uses."""
+    lines = md.splitlines()
+    prose = list(_prose_lines(lines))
+    n_words = sum(len(" ".join(parts).split()) for _, _, parts, _ in prose) or 1
+    cap = max(3, round(n_words / 500))
+    cands = [(i, j, first and j == 0) for i, _, parts, first in prose for j, p in enumerate(parts) if _invert_if(p) != p]
+    hard = [c for c in cands if c[2]]
+    soft = [c for c in cands if not c[2]]
+    flip = {(i, j) for i, j, _ in hard + soft[max(0, cap - len(hard)):]}
+    n = 0
+    for i, prefix, parts, _ in prose:
         new = []
-        for p in parts:
+        for j, p in enumerate(parts):
             q = p
             for rx, rep in FLUFF:
                 q = rx.sub(rep, q)
-            q = _invert_if(q)
+            if (i, j) in flip:
+                q = _invert_if(q)
             if q != p:
                 n += 1
                 q = _cap(q) if p[:1].isupper() else q
             new.append(q)
-        out.append(prefix + " ".join(new))
-    return "\n".join(out) + ("\n" if md.endswith("\n") else ""), n
+        lines[i] = prefix + " ".join(new)
+    return "\n".join(lines) + ("\n" if md.endswith("\n") else ""), n

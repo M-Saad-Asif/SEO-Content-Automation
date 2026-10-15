@@ -13,6 +13,32 @@ from . import common as C
 
 ENDPOINT = "https://google.serper.dev"
 TTL_SERP = 3 * 86400
+CAP_PER_RUN = 3  # operator's limit: at most 3 paid searches a run (cached answers are free)
+
+import threading  # noqa: E402
+
+_lock = threading.Lock()
+_budget = {"cap": None, "spent": 0, "refused": []}
+
+
+def start_run(cap: int | None = CAP_PER_RUN) -> None:
+    """Called when a run's research starts: from here on, at most `cap` searches reach Serper."""
+    with _lock:
+        _budget.update(cap=cap, spent=0, refused=[])
+
+
+def spent() -> dict:
+    with _lock:
+        return dict(_budget, refused=list(_budget["refused"]))
+
+
+def _take(kind: str, q: str) -> bool:
+    with _lock:
+        if _budget["cap"] is not None and _budget["spent"] >= _budget["cap"]:
+            _budget["refused"].append(f"{kind}: {q}")
+            return False
+        _budget["spent"] += 1
+        return True
 
 
 def api_key() -> str | None:
@@ -61,6 +87,8 @@ async def _call_once(client, kind: str, q: str, gl: str, hl: str, credits: list)
     if cached and time.time() - cached.get("_ts", 0) < TTL_SERP:
         cached["cached"] = True
         return cached
+    if not _take(kind, q):
+        return {"error": f"Serper credit cap ({_budget['cap']} a run) reached", "capped": True}
     body = {"q": q, "gl": gl, "hl": hl}
     for attempt in (1, 2, 3):
         try:

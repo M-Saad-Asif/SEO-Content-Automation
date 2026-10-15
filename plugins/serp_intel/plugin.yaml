@@ -1,6 +1,6 @@
 name: serp_intel
 kind: script
-description: Google SERP for the keyword in the brief's country (Serper.dev). Top 10, SERP features, People Also Ask (expanded in deep mode), related searches, autocomplete. Classifies search intent, dominant content format and SERP composition (forums, government, video, marketplaces, publishers).
+description: Google SERP for the keyword in the brief's country (Serper.dev). Top 10, SERP features, People Also Ask (one expansion), related searches; autocomplete from Google's free suggestion service. At most 2 of the run's 3 paid searches. Classifies search intent, dominant content format and SERP composition (forums, government, video, marketplaces, publishers).
 needs: []
 modes: [deep, quick]
 budget_s: 8

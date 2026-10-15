@@ -9,7 +9,6 @@ import re
 from collections import Counter
 from urllib.parse import urlparse
 
-from seolib import serper
 from seolib.nlp import places, same_stem, tokens
 
 # General English only. Function words, and modifiers that narrow a query without changing what it asks:
@@ -124,23 +123,11 @@ def run(ctx):
     from seolib.nlp import prime
     prime([urlparse(u).path.split("/")[-1].replace("-", " ") for u, _ in pages] + [n for _, n in pages]
           + [q for q, _ in cands] + [h for pg in (ctx.load("competitor_scrape") or {}).get("pages", []) for _, h in pg.get("outline", [])], syn)
-    main_top = {page_key(o["link"]) for o in serp.get("organic", [])}
-    overlap_q = []
-    if ctx.deep():
-        shapes_seen = set()
-        for q, src in uniq:
-            if not src.startswith("paa") and distinct(q) and shape(q) not in shapes_seen:
-                shapes_seen.add(shape(q))
-                overlap_q.append(q)
-        overlap_q = overlap_q[:12]
     comp = ctx.load("competitor_scrape") or {}
     head_sets = [content(h) - MODIFIERS for pg in comp.get("pages", []) for _, h in pg.get("outline", [])]
-    overlaps = {}
-    if overlap_q:
-        res, cr = serper.batch([("search", q) for q in overlap_q], ctx.brief["locale"])
-        ctx.credits += cr
-        for (_, q), r in res.items():
-            overlaps[q] = len({page_key(o.get("link", "")) for o in r.get("organic", [])[:10]} & main_top)
+    # SERP-overlap checks (one paid search per question, up to 12) are off under the 3-credit cap: whether a
+    # question shares the page is decided from the top 10 pages' own headings (head_sets) below
+    overlaps: dict = {}
 
     def jac(a, b):
         x, y = content(a) - MODIFIERS - FILLER, content(b) - MODIFIERS - FILLER
@@ -185,23 +172,12 @@ def run(ctx):
     def home_market(name):
         """Whose market is this person or brand? Google, searched in this locale, answers: mostly this country's
         sites (".uk" for the UK) means a local name (Martin Lewis); mostly elsewhere means another market's (Dave
-        Ramsey). One cached search per unknown name; markets without their own domain ending aren't tested."""
+        Ramsey). Free under the 3-credit cap: a name this market's own top 10 pages mention is local; one they
+        never mention is another market's (its question isn't page-one demand here either)."""
         if region == "us":
             return True
         if name not in name_home:
-            try:
-                res, cr = serper.batch([("search", name)], ctx.brief["locale"])
-                ctx.credits += cr
-                r = list(res.values())[0] if res else {}
-                kg = r.get("knowledgeGraph") or {}
-                about = " ".join([kg.get("type", ""), kg.get("description", "")] +
-                                 [o.get("snippet", "") for o in r.get("organic", [])[:5]])
-                geos = places(about)
-                home_geo = "geo:" + ("gb" if region in ("gb", "uk") else region)
-                # Google describes the person or brand: "British financial journalist" vs "American radio host"
-                name_home[name] = home_geo in geos or not geos
-            except Exception:
-                name_home[name] = True
+            name_home[name] = name.lower() in corpus
         return name_home[name]
 
     def foreign(q):

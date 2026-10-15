@@ -177,22 +177,20 @@ def run(ctx):
                 if not any(s.endswith(site) for s in sites):
                     sites.append(site)
         if sites:
-            from datetime import date
-            yr = date.today().year
-            searches = [("search", f"{x} site:{s}") for s in sites[:4] for x in asked[:2]]
-            if ctx.brief.get("ymyl") is True:  # rules change: find this year's and last year's changes too
-                searches += [("search", f"{q} changes {yr} OR {yr - 1} site:{s}") for s in sites[:2]]
+            # one paid search across the authorities (3-credit cap): "query (site:a OR site:b …)"; this year's rule
+            # changes come from the gain researchers
+            searches = [("search", f"{q} (" + " OR ".join(f"site:{s}" for s in sites[:4]) + ")")]
             res, cr = serper.batch(searches, ctx.brief["locale"])
             ctx.credits += cr
-            hits = [o.get("link") for r in res.values() for o in r.get("organic", [])[:6] if o.get("link")]
+            hits = [o.get("link") for r in res.values() for o in r.get("organic", [])[:10] if o.get("link")]
             spam = spam_hosts(hits)
+            per_site: dict = {}
             for r in res.values():
-                kept = 0
-                for o in r.get("organic", [])[:6]:
+                for o in r.get("organic", [])[:10]:
                     u = o.get("link")
-                    if u and domain(u) not in spam and kept < 3:
+                    if u and domain(u) not in spam and per_site.get(domain(u), 0) < 3:
                         add(u, True)
-                        kept += 1
+                        per_site[domain(u)] = per_site.get(domain(u), 0) + 1
     allowed = {region, "intl", {"gb": "gb"}.get(region, region)} | {p[4:] for p in places(q)}
     if region in ("ie", "fr", "de", "es", "it", "nl", "be", "pt", "at", "dk", "se", "fi", "pl", "cz", "gr"):
         allowed.add("eu")

@@ -96,9 +96,15 @@ def run_research(brief_path: str, mode: str = "deep", refresh: bool = False, mar
     rd.mkdir(parents=True, exist_ok=True)
     if mark_start:  # a background run was marked by `next` when it started it
         mark(rd, "prep", "start", fresh=True)
+    from . import serper
+    serper.start_run()  # at most 3 paid searches this run (seolib/serper.py); cached answers are free
     ctx = Ctx(brief, rd, mode, refresh)
     ms = {n: m for n, m in manifests().items() if applies(m, brief, mode)}
     done, times = _run_waves(ms, ctx)
+    s = serper.spent()
+    if s["refused"]:
+        ctx.decide(f"Serper credit cap ({s['cap']} a run): {len(s['refused'])} search(es) skipped: "
+                   + "; ".join(s["refused"][:5]))
     _finish(rd, ctx, done, times, mode)
     return rd
 

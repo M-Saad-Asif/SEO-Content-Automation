@@ -53,8 +53,9 @@ class KorayTests(unittest.TestCase):
     def test_list_items_start_with_the_same_part_of_speech(self):
         mixed = "- Clean the fence.\n- Sanding of rough patches.\n- Apply two thin coats.\n- Wait for a dry day.\n"
         same = "- Clean the fence.\n- Sand rough patches.\n- Apply two thin coats.\n- Wait for a dry day.\n"
-        self.assertIn("K14-list-mixed", rules(mixed))
-        self.assertNotIn("K14-list-mixed", rules(same))
+        self.assertNotIn("K14-list-mixed", rules(mixed))  # one mixed list is within the page's allowance
+        self.assertIn("K14-list-mixed", rules(mixed + "\nThen:\n\n" + mixed))  # the second goes back
+        self.assertNotIn("K14-list-mixed", rules(same + "\nThen:\n\n" + same))
 
     def test_no_skipped_heading_levels(self):
         self.assertIn("K16-skipped-level", rules("### How long fence paint takes in rain\n\nIt takes 4 hours.\n"))

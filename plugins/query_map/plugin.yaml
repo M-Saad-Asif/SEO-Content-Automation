@@ -1,6 +1,6 @@
 name: query_map
 kind: script
-description: Decides, for every PAA question, related search and autocomplete variant, whether it becomes an H2 here, is covered inside a section, is linked to an existing client page, or deserves a separate page. Deep mode checks SERP overlap (shared top results means the same page).
+description: Decides, for every PAA question, related search and autocomplete variant, whether it becomes an H2 here, is covered inside a section, is linked to an existing client page, or deserves a separate page. Decided from the top 10 pages' own headings (no paid searches, under the 3-credit cap).
 needs: [serp_intel, foundation, gsc_insights, keyword_research, competitor_scrape]
 modes: [deep, quick]
 budget_s: 8
