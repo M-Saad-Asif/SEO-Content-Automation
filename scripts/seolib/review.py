@@ -11,7 +11,7 @@ import re
 from pathlib import Path
 
 from . import common as C
-from .lint import STOP, USABLE, load_research, parse_md, sentences, strip_md
+from .lint import STOP, SUPPORT, load_research, parse_md, sentences, strip_md
 from .nlp import tokens
 
 RULEISH = re.compile(r"\b(must|need|needs|should|cannot|can't|only|always|never|every|legal|illegal|law|required|"
@@ -47,7 +47,7 @@ def review(rd: Path) -> Path:
     b = sheet.get("brief", {})
     syn = b.get("synonyms") or {}
     meta, blocks = parse_md(md)
-    facts = [f for f in sheet.get("facts", []) if f.get("status") in USABLE]
+    facts = [f for f in sheet.get("facts", []) if f.get("status") in SUPPORT]
     claims = [c for c in sheet.get("client", {}).get("approved_claims", []) if c.get("seen_on_site", True)]
     # approved client claims are sources too ("over 10,000 businesses" rests on one)
     facts = facts + [{"id": c.get("id", "claim"), "claim": "approved client claim", "value": c["text"]} for c in claims]

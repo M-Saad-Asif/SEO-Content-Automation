@@ -273,19 +273,21 @@ def next_step(brief_path: str, mode: str | None = None) -> None:
     # 1. research (scripts) -------------------------------------------------------------------------------------
     rd = _current_run(brief)
     if rd is None or not (rd / "research_plan.md").exists() or not (rd / "writer_pack.md").exists():
-        print(f"RUNNING: research for \"{brief['target_query']}\" (scripts, 1–3 minutes)…")
+        print(f"RUNNING: research for \"{brief['target_query']}\" (scripts, about a minute)…")
         from .harness import run_research
         # the scripts' own console notes ("next: write outline.md…") are for manual runs; here `next` decides
         rd, log = _quiet(run_research, brief_path, mode)
         (rd / "research_log.txt").write_text(log, encoding="utf-8")
         print(f"Research scripts finished (log: {rel(rd)}/research_log.txt).")
         st = _state(rd)
-        st["mode"] = mode or brief.get("research_mode") or "deep"
+        st["mode"] = mode or brief.get("research_mode") or "fast"
         _save_state(rd, st)
     st = _state(rd)
     _end_agent_stage(rd, st)
     deep = st.get("mode", "deep") == "deep"
     R = rel(rd)
+    if st.get("mode") == "fast":
+        return _next_fast(brief, brief_path, rd, st, R, mode)
 
     # 2. research (agent) ----------------------------------------------------------------------------------------
     if "research" not in st["done"]:
@@ -517,6 +519,169 @@ def next_step(brief_path: str, mode: str | None = None) -> None:
         return next_page(brief["batch_plan"], mode, {"id": brief["batch_item"], "result": str(rd / "final.md")})
     print(SEP)
     print("DONE")
+    print(SEP)
+    print(f"Page:   {R}/final.md")
+    print(f"Report: {R}/report.md")
+    print(f"Scores sheet (for a reviewer): {R}/eval.md")
+    print("Stop here. Reply with these three paths and nothing else.")
+
+
+FAST_ROUNDS = 2  # fix rounds after the combined first check, before the run stops instead of looping
+
+
+def _review_checks(rd: Path, limit: int = 25) -> list[str]:
+    """The CHECK items of review.md (a claim with no fact behind it, or a number its fact doesn't carry), with the
+    closest-fact lines under each, ready to print in the fix task."""
+    from .review import review
+    _quiet(review, rd)
+    lines = (rd / "review.md").read_text(encoding="utf-8").splitlines()
+    out, n, keep = [], 0, False
+    for ln in lines:
+        if ln.startswith("- **CHECK**"):
+            n += 1
+            keep = n <= limit
+            if keep:
+                out.append(ln.replace("- **CHECK** ", "- CHECK "))
+        elif keep and ln.startswith("  - "):
+            out.append(ln)
+        elif not ln.startswith("  "):
+            keep = False
+    if n > limit:
+        out.append(f"- …and {n - limit} more CHECK items in {rd.name}/review.md")
+    return out
+
+
+def _coverage_gaps(rd: Path, md: str) -> list[dict]:
+    """Required coverage items the page shows no sign of answering. Lexical, so the writer judges each one: a
+    paraphrase can answer an item without its words."""
+    from .article_context import content_words
+    ctx = C.load_json(rd / "article_context.json") or {}
+    page = ctx.get("page") or {}
+    syn = page.get("synonyms")
+    body = content_words(md, syn)
+    main = content_words(page.get("target_query", ""), syn)
+    out, seen = [], set()
+    for c in ctx.get("coverage_requirements", []):
+        if not c.get("required"):
+            continue
+        words = content_words(c["text"], syn) - main
+        key = frozenset(words)
+        if not words or key in seen:
+            continue
+        seen.add(key)
+        if len(words & body) < max(1, round(0.6 * len(words))):
+            out.append(c)
+    return out
+
+
+def _next_fast(brief: dict, brief_path: str, rd: Path, st: dict, R: str, mode: str | None) -> None:
+    """The fast flow (default): scripts research → one write → one combined check → validate → done.
+
+    Facts come from page one (plugins/serp_facts), authorities and the client, so there is no research or
+    fact-check agent; the checks that guard information correctness (lint, the claim-to-fact review, coverage,
+    live links) still run, by script."""
+    import hashlib
+    draft, final = rd / "draft.md", rd / "final.md"
+    if not draft.exists():
+        from .kgdoc import write_docs
+        from .writebrief import build as write_brief
+        write_docs(rd)
+        write_brief(rd)
+        _task("DRAFT THE PAGE (role: writer)", [
+            f"Run folder: {R}",
+            "1. Read RULES.md fully (section 0, the page's job, first).",
+            f"2. Read {R}/write_brief.md. It is your only data file: page job, the coverage checklist (everything page",
+            "   one covers), the information-gain questions, the facts you may state, and the internal links to add.",
+            f"3. Write {R}/draft.md with a single write: front matter (title, meta_description), one H1, Markdown",
+            "   only. The main answer first; every section-1 item covered; every section-2 question answered; facts in",
+            "   your own words (never six or more words in a row from a fact) with numbers exactly as given; 3–6",
+            "   internal links from section 4. No contradictions, no number given twice with different values.",
+            "4. Then stop. Do not reread or re-edit the draft: the check `next` runs straight after lists every",
+            "   problem, and you fix them in one pass then. No research, no other files, no planning notes.",
+            "Write straight away: a fact that doesn't fit is skipped silently, never weighed at length or reported.",
+            "",
+            _length_line(rd),
+        ], brief_path)
+        return
+    from .lint import lint_text, load_research
+    from .timing import mark
+    sheet = C.load_json(rd / "fact_sheet.json")
+    lm = C.load_json(rd / "link_map.json") or {}
+    md = draft.read_text(encoding="utf-8")
+    mark(rd, "lint", "start")
+    try:
+        res = lint_text(md, sheet, lm, load_research(rd))
+    finally:
+        mark(rd, "lint", "end")
+    C.save_json(rd / "lint.json", res)
+    blocks = [f for f in res["findings"] if f["severity"] == "block"]
+    sig = hashlib.sha256(draft.read_bytes()).hexdigest()
+    if st["done"].get("fast_check") and st.get("fast_check_sig") == sig:
+        st["done"].pop("fast_check")  # `next` again before any edit: print the same combined task, don't skip it
+    if not st["done"].get("fast_check"):
+        # one combined pass: every blocking line, every claim the facts don't carry, every coverage item that looks
+        # missing, and the warnings to judge, so the writer edits once instead of once per checker
+        checks = _review_checks(rd)
+        gaps = _coverage_gaps(rd, md)
+        warns = [f for f in res["findings"] if f["severity"] == "warn"]
+        st["done"]["fast_check"] = C.now_iso()
+        st["fast_check_sig"] = sig
+        _save_state(rd, st)
+        if blocks or checks or gaps or warns:
+            lines = [f"Fix {R}/draft.md in place, in one pass. Edit only the sentences named here; never rewrite the page.", ""]
+            if blocks:
+                lines += [f"A. {len(blocks)} blocking lint line(s): fix each one.", ""] + _finding_lines(blocks) + [""]
+            if checks:
+                lines += ["B. Claims the facts in write_brief.md don't carry: make the sentence say what its closest fact",
+                          "   says (same number, group, condition and strength), or cut it. A number you worked out from facts",
+                          "   only needs its inputs in the same paragraph.", ""] + checks + [""]
+            if gaps:
+                lines += ["C. Coverage items the page may be missing (lexical check): add a short answer where it fits, or",
+                          "   leave it when the page already answers it in other words.", ""]
+                lines += [f"- [{c['id']}] {c['text']}" + (" (information gain)" if c.get("info_gain") else "") for c in gaps[:25]] + [""]
+            if warns:
+                lines += [f"D. {len(warns)} lint warning(s) to judge: fix a sentence when the rule really applies.", ""]
+                lines += _finding_lines(warns, limit=25)
+            _task("FIX THE DRAFT (role: writer)", lines, brief_path)
+            return
+    elif blocks:
+        if _rounds(rd, st, "lint", FAST_ROUNDS, R, brief_path, blocks):
+            return
+        _task("FIX LINT BLOCKS (role: writer)", [f"Lint found {len(blocks)} blocking problem(s) in {R}/draft.md. Fix each "
+                                                 "one in place and change nothing else:", ""] + _finding_lines(blocks),
+              brief_path)
+        return
+    draft_sig = hashlib.sha256(draft.read_bytes()).hexdigest()
+    if not final.exists() or st.get("validated_draft") != draft_sig:
+        from .validate import validate
+        ok, out = _quiet(validate, str(rd))
+        if not ok:
+            if _rounds(rd, st, "validate", FAST_ROUNDS, R, brief_path, out.strip()[-3500:]):
+                return
+            _task("FIX VALIDATION (role: writer)", [
+                f"Validation failed. Fix each blocking line below in {R}/draft.md and change nothing else:", "",
+                out.strip()[-3500:],
+            ], brief_path)
+            return
+        st["validated_draft"] = draft_sig
+        _save_state(rd, st)
+    ft = final.read_text(encoding="utf-8")
+    if ft.startswith("---\n") and "\nupdated:" not in ft.split("\n---", 1)[0]:
+        from datetime import date
+        final.write_text(ft.replace("---\n", f"---\nupdated: {date.today().isoformat()}\n", 1), encoding="utf-8")
+    if not (rd / "eval.md").exists() or (rd / "eval.md").stat().st_mtime < final.stat().st_mtime:
+        from .evaluate import evaluate
+        _quiet(evaluate, rd)
+    st["done"]["complete"] = C.now_iso()
+    _save_state(rd, st)
+    if brief.get("batch_plan"):
+        from .batch import next_page
+        print(f"PAGE COMPLETE: {R}/final.md")
+        return next_page(brief["batch_plan"], mode, {"id": brief["batch_item"], "result": str(rd / "final.md")})
+    t = (C.load_json(rd / "timing.json") or {}).get("events") or []
+    took = f" in {int(t[-1]['t'] - t[0]['t']) // 60} min {int(t[-1]['t'] - t[0]['t']) % 60} s" if len(t) > 1 else ""
+    print(SEP)
+    print("DONE" + took)
     print(SEP)
     print(f"Page:   {R}/final.md")
     print(f"Report: {R}/report.md")

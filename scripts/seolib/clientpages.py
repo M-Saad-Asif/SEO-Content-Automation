@@ -82,14 +82,23 @@ TASK_VERBS = {"make", "do", "get", "use", "choose", "find", "check", "build", "c
 def related(urls: list[str], query: str, syn: dict | None = None, exclude: str = "") -> dict:
     """Score the client's pages against the query: same-topic pages (possible cannibalisation), related guides,
     and commercial pages (the natural next step)."""
+    from .nlp import prime, _rule_lemma
     q = content(query, syn) - TASK_VERBS or content(query, syn)
-    slugs = {u: slug_words(u, syn) for u in urls}
-    # words most of the site's URLs share ("dog" on a dog-food site) say nothing about relevance
+    raw_slug = {u: re.sub(r"[-_]+", " ", urlparse(u).path.rstrip("/").rsplit("/", 1)[-1]).lower() for u in urls}
+    # words most of the site's URLs share ("dog" on a dog-food site) say nothing about relevance; counted with the
+    # cheap rule lemmas over every URL, so the tagger only runs on slugs that can match the query at all
     df = {}
-    for s in slugs.values():
-        for w in s:
+    for text in raw_slug.values():
+        for w in {_rule_lemma(x) for x in re.findall(r"[a-z0-9]{3,}", text)}:
             df[w] = df.get(w, 0) + 1
     common = {w for w, c in df.items() if len(urls) >= 20 and c / len(urls) > 0.15}
+    # a slug sharing no 4-letter stem with the query cannot share a lemma with it (the match needs `specific`)
+    stems = {w[:4] for w in q | set(re.findall(r"[a-z]{3,}", (query or "").lower()))}
+    for k, v in (syn or {}).items():
+        stems |= {w[:4] for w in re.findall(r"[a-z]{3,}", f"{k} {v}".lower())}
+    cand = [u for u in urls if any(x[:4] in stems for x in re.findall(r"[a-z0-9]{3,}", raw_slug[u]))]
+    prime([query] + [raw_slug[u] for u in cand], syn)
+    slugs = {u: slug_words(u, syn) for u in cand}
     qs = q - common or q
     same, guides, commercial = [], [], []
     fams = template_families(urls, syn)

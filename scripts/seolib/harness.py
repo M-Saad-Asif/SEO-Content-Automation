@@ -41,7 +41,7 @@ class Ctx:
         self.credits = 0
 
     def deep(self) -> bool:
-        return self.mode == "deep"
+        return self.mode in ("deep", "fast")  # fast reads as widely as deep; only the agent stages differ
 
     @property
     def task(self) -> str:
@@ -67,7 +67,7 @@ class Ctx:
 
 
 def applies(m: dict, brief: dict, mode: str) -> bool:
-    if m.get("kind") != "script" or mode not in m.get("modes", ["deep", "quick"]):
+    if m.get("kind") != "script" or ("deep" if mode == "fast" else mode) not in m.get("modes", ["deep", "quick"]):
         return False
     w = m.get("when") or {}
     return not w.get("task") or (brief.get("task") or "new") in ([w["task"]] if isinstance(w["task"], str) else w["task"])
@@ -91,7 +91,7 @@ def run_research(brief_path: str, mode: str = "deep", refresh: bool = False) -> 
     from .prep import load_brief, run_dir
     from .timing import mark
     brief = load_brief(brief_path)
-    mode = mode or brief.get("research_mode") or "deep"
+    mode = mode or brief.get("research_mode") or "fast"
     rd = run_dir(brief)
     rd.mkdir(parents=True, exist_ok=True)
     mark(rd, "prep", "start", fresh=True)
@@ -103,17 +103,26 @@ def run_research(brief_path: str, mode: str = "deep", refresh: bool = False) -> 
 
 
 def _run_waves(ms: dict, ctx: Ctx, done: dict | None = None) -> tuple[dict, dict]:
+    """Each plugin starts as soon as its own dependencies have finished, not when a whole wave has: a slow source
+    fetch in one plugin (official_facts) no longer holds back the plugins that never needed it."""
+    from concurrent.futures import FIRST_COMPLETED, wait
     done = dict(done or {})
     times: dict[str, float] = {}
     pending = {n: m for n, m in ms.items() if n not in done}
-    while pending:
-        wave = [m for m in pending.values() if all(d in done or d not in ms for d in m.get("needs", []))]
-        if not wave:
-            raise SystemExit(f"plugin dependency cycle among {list(pending)}")
-        with ThreadPoolExecutor(max_workers=len(wave)) as ex:
-            for name, res, secs in ex.map(lambda m: _run_one(m, ctx), wave):
+    running = {}
+    with ThreadPoolExecutor(max_workers=max(1, len(pending))) as ex:
+        while pending or running:
+            ready = [m for n, m in pending.items() if all(d in done or d not in ms for d in m.get("needs", []))]
+            for m in ready:
+                running[ex.submit(_run_one, m, ctx)] = m["name"]
+                pending.pop(m["name"])
+            if not running:
+                raise SystemExit(f"plugin dependency cycle among {list(pending)}")
+            finished, _ = wait(running, return_when=FIRST_COMPLETED)
+            for fut in finished:
+                running.pop(fut)
+                name, res, secs = fut.result()
                 done[name], times[name] = res, round(secs, 1)
-                pending.pop(name)
     return done, times
 
 

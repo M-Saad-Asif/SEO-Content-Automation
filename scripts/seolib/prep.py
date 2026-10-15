@@ -439,7 +439,7 @@ def prep(brief_path: str, refresh: bool = False, quiet: bool = False, timing: bo
     reqs2 = [{"url": u, "kind": "sitemap", "parse": "xml"} for u in child_maps]
     reqs2 += [{"url": f"https://{domain}/products/{pj['handle']}", "kind": "product", "parse": "html"}
               for pj in prods_raw]
-    r2 = C.run_async(C.fetch_many(reqs2, refresh)) if reqs2 else {}
+    r2 = C.run_async(C.fetch_many(reqs2, refresh, timeout=8, attempts=1)) if reqs2 else {}  # one try: child maps can be huge
 
     # ---- page
     page = r1.get(page_url) or {}

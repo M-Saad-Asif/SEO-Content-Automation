@@ -111,20 +111,24 @@ def _rule_lemma(w: str) -> str:
 
 
 _NO_SPACY = False
+_LEMMA: dict[str, tuple] = {}  # normalised string -> lemmas; filled one at a time or in batches by prime()
+_LEMMA_LOCK = threading.Lock()
 
 
-@lru_cache(maxsize=20000)
-def _lemmas(s: str) -> tuple:
+def _model():
     global _NO_SPACY
-    out = []
-    if not _NO_SPACY:
-        try:
-            model = _nlp()
-        except Exception:  # spaCy missing, or its compiled library blocked on this machine
-            _NO_SPACY = True
     if _NO_SPACY:
-        return tuple(_rule_lemma(w) for w in re.findall(r"[a-z0-9£$€%]+(?:'[a-z]+)?", s))
-    for t in model(s):
+        return None
+    try:
+        return _nlp()
+    except Exception:  # spaCy missing, or its compiled library blocked on this machine
+        _NO_SPACY = True
+        return None
+
+
+def _from_doc(doc) -> tuple:
+    out = []
+    for t in doc:
         if t.is_space or t.is_punct:
             continue
         w = t.text
@@ -134,13 +138,60 @@ def _lemmas(s: str) -> tuple:
     return tuple(out)
 
 
-def tokens(text: str, synonyms: dict | None = None) -> list[str]:
-    """Lemmatised tokens; `synonyms` maps a token (or phrase) to its canonical form for this client."""
+def _lemmas(s: str) -> tuple:
+    hit = _LEMMA.get(s)
+    if hit is not None:
+        return hit
+    model = _model()
+    if model is None:
+        res = tuple(_rule_lemma(w) for w in re.findall(r"[a-z0-9£$€%]+(?:'[a-z]+)?", s))
+    else:
+        res = _from_doc(model(s))
+    with _LEMMA_LOCK:
+        if len(_LEMMA) > 200000:
+            _LEMMA.clear()
+        _LEMMA[s] = res
+    return res
+
+
+def _prepared(text: str, synonyms: dict | None) -> str:
     s = normalise(text)
     for k, v in sorted((synonyms or {}).items(), key=lambda kv: -len(kv[0])):
         s = re.sub(rf"\b{re.escape(normalise(k))}\b", normalise(v), s)
-    toks = list(_lemmas(s))
-    return [geo_canon(w, " ".join(toks[max(0, i - 1): i + 3])) or w for i, w in enumerate(toks)]
+    return s
+
+
+def prime(texts, synonyms: dict | None = None) -> None:
+    """Lemmatise many strings in one batched model pass. A model call per short string (URL slugs, headings,
+    queries) costs ~6 ms of fixed overhead each; thousands of them dominated the research step. Same lemmas,
+    same tokens: only the batching differs."""
+    model = _model()
+    if model is None:
+        return
+    todo = list(dict.fromkeys(s for s in (_prepared(t, synonyms) for t in texts if t) if s and s not in _LEMMA))
+    if not todo:
+        return
+    docs = list(model.pipe(todo, batch_size=512))
+    with _LEMMA_LOCK:
+        for s, d in zip(todo, docs):
+            _LEMMA[s] = _from_doc(d)
+
+
+@lru_cache(maxsize=100000)
+def _tokens(text: str, syn_key: tuple) -> tuple:
+    toks = list(_lemmas(_prepared(text, dict(syn_key))))
+    return tuple(geo_canon(w, " ".join(toks[max(0, i - 1): i + 3])) or w for i, w in enumerate(toks))
+
+
+def tokens(text: str, synonyms: dict | None = None) -> list[str]:
+    """Lemmatised tokens; `synonyms` maps a token (or phrase) to its canonical form for this client."""
+    try:
+        key = tuple(sorted((synonyms or {}).items()))
+        hash(key)
+    except TypeError:  # unhashable synonym values: no caching for this call
+        toks = list(_lemmas(_prepared(text, synonyms)))
+        return [geo_canon(w, " ".join(toks[max(0, i - 1): i + 3])) or w for i, w in enumerate(toks)]
+    return list(_tokens(text or "", key))
 
 
 def same_stem(a: str, b: str) -> bool:

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """ASDivigitals page-SEO pipeline: one CLI for every deterministic step.
 
-  python scripts/seo.py next     <brief.yaml> [--mode deep|quick]   # THE ENTRY POINT: runs the next step, prints the agent's one task
+  python scripts/seo.py next     <brief.yaml> [--mode fast|deep|quick]   # THE ENTRY POINT: runs the next step, prints the agent's one task
   python scripts/seo.py done     <brief.yaml> research|expert|review|expert_read|editor|verify|internal_links   # confirm an agent task the driver asked for
   python scripts/seo.py doctor                             # check Python, packages, spaCy model, keys, plugins
   python scripts/seo.py read     <url>                     # a page's text (HTML or PDF), for agents without a fetch tool
@@ -10,7 +10,7 @@ Lower-level commands (the driver calls these; agents only use them when a printe
 
   python scripts/seo.py client   <slug> <domain>          # new client profile from the live site (any niche)
   python scripts/seo.py brief    <client> "<query>" [--type guide|spoke|hub|product-guide|service]
-  python scripts/seo.py research <brief.yaml> [--mode deep|quick] [--refresh]   # all research plugins
+  python scripts/seo.py research <brief.yaml> [--mode fast|deep|quick] [--refresh]   # all research plugins
   python scripts/seo.py outline  <run-dir>                 # deep mode: check outline.md before drafting
   python scripts/seo.py plugins                            # list the plugin harness
   python scripts/seo.py ingest   <run-dir> <plugin> <file.json>   # MCP route: store raw connector data, re-run downstream
@@ -52,7 +52,7 @@ def main(argv=None) -> int:
     p.add_argument("--scope", help="who/what/when the fact applies to (a group, product, country, tax year, version)")
     p = sub.add_parser("research")
     p.add_argument("brief")
-    p.add_argument("--mode", choices=["deep", "quick"], default=None)
+    p.add_argument("--mode", choices=["fast", "deep", "quick"], default=None)
     p.add_argument("--refresh", action="store_true")
     p = sub.add_parser("outline")
     p.add_argument("run")
@@ -100,7 +100,7 @@ def main(argv=None) -> int:
     p.add_argument("--offline", action="store_true", help="unit regressions only; no network, client runs or paid APIs")
     p = sub.add_parser("start")
     p.add_argument("request", nargs="*", help="a brief, URL/domain, keyword, or: <website> | keywords: <file>")
-    p.add_argument("--mode", choices=["deep", "quick"])
+    p.add_argument("--mode", choices=["fast", "deep", "quick"])
     p.add_argument("--site", help="website domain or saved client slug")
     p.add_argument("--keywords", help="CSV, YAML, JSON or one-keyword-per-line file")
     p.add_argument("--pages", help="selected page URLs in a list file")
@@ -116,10 +116,10 @@ def main(argv=None) -> int:
     p.add_argument("--no-default", action="store_true", help="do not bind this project to the website")
     p = sub.add_parser("batch", help="resume a prepared website page queue")
     p.add_argument("plan")
-    p.add_argument("--mode", choices=["deep", "quick"])
+    p.add_argument("--mode", choices=["fast", "deep", "quick"])
     p = sub.add_parser("next")
     p.add_argument("brief")
-    p.add_argument("--mode", choices=["deep", "quick"])
+    p.add_argument("--mode", choices=["fast", "deep", "quick"])
     p = sub.add_parser("done")
     p.add_argument("brief")
     p.add_argument("step", choices=["research", "expert", "review", "expert_read", "editor", "verify", "internal_links", "retry"])

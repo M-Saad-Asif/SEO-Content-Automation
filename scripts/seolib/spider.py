@@ -108,6 +108,24 @@ def md_blocks(md: str) -> list[list[str]]:
     return blocks
 
 
+def tidy(blocks: list) -> list:
+    """Entities and stray markdown Spider leaves in text ("8&ndash;10", "What&rsquo;s", "…watering ## Will they…"):
+    applied to fresh and cached results alike, so old cache entries need no re-render."""
+    import html
+    out = []
+    for t, x in blocks or []:
+        x = html.unescape(x)
+        m = re.search(r"\s(#{2,6})\s+(?=\S)", x) if t in ("p", "li") else None
+        if m:
+            before, after = x[:m.start()].strip(), x[m.end():].strip()
+            if before:
+                out.append([t, before])
+            out.append([f"h{min(4, len(m.group(1)))}", after])
+            continue
+        out.append([t, x.lstrip("# ").strip() if t.startswith("h") else x])
+    return out
+
+
 # ---------------------------------------------------------------- calls
 
 async def _scrape_one(client, url: str, sem, *, attempts: int = 2, refresh: bool = False,
@@ -116,6 +134,8 @@ async def _scrape_one(client, url: str, sem, *, attempts: int = 2, refresh: bool
     cached = C.load_json(C._cache_path(key))
     if not refresh and cached and time.time() - cached.get("_ts", 0) < TTL:
         cached["cached"] = True
+        cached["blocks"] = tidy(cached.get("blocks"))
+        cached["title"] = next((x for t, x in cached["blocks"] if t == "h1"), cached.get("title", ""))
         return cached
     body = {"url": url, "limit": 1, "return_format": "markdown", "request": "smart", "request_timeout": request_timeout,
             "max_credits_per_page": 200}
@@ -132,7 +152,7 @@ async def _scrape_one(client, url: str, sem, *, attempts: int = 2, refresh: bool
                 if r.status_code != 200 or str(status) != "200":
                     return {"url": url, "status": status, "state": "error", "via": "spider"}
                 md = item.get("content") or ""
-                blocks = md_blocks(md)
+                blocks = tidy(md_blocks(md))
                 words = sum(len(x.split()) for t, x in blocks if t in ("p", "li"))
                 title = next((x for t, x in blocks if t == "h1"), "")
                 res = {"url": url, "status": status, "final_url": item.get("url") or url,

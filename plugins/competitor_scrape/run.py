@@ -83,7 +83,8 @@ def run(ctx):
         counts[role] = counts.get(role, 0) + 1
         targets.append({"link": u, "position": None, "domain": domain(u), "kind": kind(u), "source_role": role})
     from seolib import spider
-    rendered = spider.scrape_many([o["link"] for o in targets], refresh=ctx.refresh) if spider.api_key() else {}
+    rendered = spider.scrape_many([o["link"] for o in targets], concurrency=max(1, min(16, len(targets))), timeout_s=25,
+                                 attempts=1, refresh=ctx.refresh) if spider.api_key() else {}
     need = [o for o in targets if (rendered.get(o["link"]) or {}).get("state") != "ok"]
     res = C.run_async(C.fetch_many([{"url": o["link"], "kind": "page", "parse": "doc"} for o in need],
                                    ctx.refresh, timeout=8, attempts=1)) if need else {}

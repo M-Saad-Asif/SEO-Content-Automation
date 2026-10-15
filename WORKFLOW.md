@@ -4,7 +4,20 @@
 
 You are the writer. Plugins (in `plugins/`) do the research and the checks. Run every command from the repository root, or call `scripts/seo.py` by its full path from anywhere. Use `python`, or `python3` where `python` is not on PATH.
 
-**Input:** a brief path, for example `briefs/<page>.yaml`. **Mode:** `deep` (default) or `quick` (add `--mode quick` when the user asks for a quick run).
+**Input:** a brief path, for example `briefs/<page>.yaml`. **Mode:** `fast` (default, about five minutes end to end), `deep` (add `--mode deep` when the user asks for the full agent review) or `quick`.
+
+## The fast flow (default)
+
+| # | Step | Who | Target |
+|---|---|---|---|
+| 1 | Research: all script plugins, including `serp_facts` (the page-one fact table) | script | ≤ 60 s |
+| 2 | Draft from `write_brief.md` (coverage checklist, information-gain questions, facts, internal links) | writer | ≤ 3 min |
+| 3 | One combined check: lint blocks, claims the facts don't carry (review CHECKs), likely-missing coverage, warnings | script → writer | ≤ 60 s |
+| 4 | Validate (re-lint, live links), eval | script | ≤ 15 s |
+
+Evidence policy (RULES 1.25): the points page-one pages make are validated (`serp` facts) and need no research trip; the higher-ranked page wins a contradiction; a verified authority fact beats any competitor; the writer's own knowledge may drop a point that is wrong, never invent a number. Every point page one covers is covered (a point one site makes is still validated); People Also Ask and related questions page one leaves unanswered are the information gain. There is no researcher, expert, outline, editor or fact-check agent in this flow: the checks that guard correctness (lint, the claim-to-fact review, coverage, live links) run by script. Use `--mode deep` for YMYL pages that need the full review.
+
+The sections below describe the deep flow; in the fast flow only sections 4 (draft, from `write_brief.md`), 5, 6 and 7 apply.
 
 **Speed rules:**
 

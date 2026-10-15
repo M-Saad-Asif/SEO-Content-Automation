@@ -116,6 +116,14 @@ def run(ctx):
         uniq.append((q, src))
 
     pages = [(c["url"], c.get("name", "")) for c in lm.get("children", [])] + [(u, "") for u in lm.get("internal", [])]
+    # a client page can only answer a query whose new terms its slug or name carries (the match below needs every
+    # term): pages sharing no 4-letter stem with any candidate query are left out before the tagger runs
+    stems = {w[:4] for q in [main] + [q for q, _ in cands] for w in re.findall(r"[a-z]{3,}", q.lower())}
+    pages = [(u, n) for u, n in pages
+             if any(x[:4] in stems for x in re.findall(r"[a-z0-9]{3,}", (urlparse(u).path.split("/")[-1] + " " + n).lower()))]
+    from seolib.nlp import prime
+    prime([urlparse(u).path.split("/")[-1].replace("-", " ") for u, _ in pages] + [n for _, n in pages]
+          + [q for q, _ in cands] + [h for pg in (ctx.load("competitor_scrape") or {}).get("pages", []) for _, h in pg.get("outline", [])], syn)
     main_top = {page_key(o["link"]) for o in serp.get("organic", [])}
     overlap_q = []
     if ctx.deep():

@@ -10,7 +10,7 @@ import re
 from pathlib import Path
 
 from . import common as C
-from .lint import USABLE, parse_md, sentences, strip_md
+from .lint import SUPPORT, parse_md, sentences, strip_md
 from .review import IMPERATIVE, _imperative, _toks
 
 VERDICTS = ("SUPPORTED", "ADVICE", "FIXED", "CUT")
@@ -20,7 +20,7 @@ def _claims(rd: Path) -> list[dict]:
     md = (rd / "final.md").read_text(encoding="utf-8")
     sheet = C.load_json(rd / "fact_sheet.json") or {}
     syn = (sheet.get("brief") or {}).get("synonyms") or {}
-    facts = [f for f in sheet.get("facts", []) if f.get("status") in USABLE]
+    facts = [f for f in sheet.get("facts", []) if f.get("status") in SUPPORT]
     approved = [c for c in (sheet.get("client") or {}).get("approved_claims", []) if c.get("seen_on_site", True)]
     facts += [{"id": c.get("id", "claim"), "claim": "approved client claim", "value": c["text"], "source_url": ""}
               for c in approved]

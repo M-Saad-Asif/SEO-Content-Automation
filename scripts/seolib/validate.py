@@ -92,7 +92,7 @@ def facts_used(md: str, sheet: dict) -> list[dict]:
              for s in sentences(re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", md))]
     used = []
     for f in sheet.get("facts", []):
-        if f.get("status") not in ("verified", "captured", "operator"):
+        if f.get("status") not in ("verified", "captured", "operator", "serp"):
             continue
         v = str(f.get("value", ""))
         fn = set(re.findall(r"\d+(?:\.\d+)?", v))

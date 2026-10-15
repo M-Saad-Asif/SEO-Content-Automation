@@ -16,6 +16,9 @@ from . import common as C
 from .nlp import places, tokens
 
 USABLE = {"verified", "captured", "operator"}
+# Page-one points (plugins/serp_facts) support what a sentence says (its numbers, rules, terms), the way verified
+# facts do; they never make a competitor page a citation or link target, so link rules keep USABLE.
+SUPPORT = USABLE | {"serp"}
 UNIT = r"(?:cm|mm|kg|g|in(?:ch(?:es)?)?|%|p\b|pence|days?|working days|hours?|minutes?|mins?|weeks?|months?|years?|litres?|l\b|ml)"
 STOP = set("""a an the and or but if of to in on at by for with from as is are was were be been being it its this that these
 those you your we our they their them he she his her i me my not no do does did can could will would should may might must
@@ -166,7 +169,7 @@ def allowed_numbers(sheet: dict, research: dict | None = None) -> tuple[set, set
             if cur:
                 (prices if is_price else money).add((cur, v))
     for f in sheet.get("facts", []):
-        if f.get("status") not in USABLE:
+        if f.get("status") not in SUPPORT:
             continue
         is_price = f.get("kind") == "price"
         for k in ("value", "condition"):
@@ -380,7 +383,7 @@ class Linter:
         self.meta, self.blocks = parse_md(md)
         self.findings: list[dict] = []
         self.fact_text = " ".join(str(f.get("value", "")) + " " + str(f.get("condition", ""))
-                                  for f in sheet.get("facts", []) if f.get("status") in USABLE).lower()
+                                  for f in sheet.get("facts", []) if f.get("status") in SUPPORT).lower()
         self.fact_text += " " + " ".join(c["text"] for c in sheet.get("client", {}).get("approved_claims", []) if c.get("seen_on_site", True)).lower()
 
     def add(self, rule, sev, blk, text, reason, fix=""):
@@ -1279,7 +1282,7 @@ class Linter:
         known = {"UK", "US", "USA", "EU", "ID", "PDF", "FAQ", "OK", "TV", "PM", "AM", "UAE", "GOV", "URL", "UTC", "GMT", "USB", "SIM", "PIN", "GPS", "LED", "ATM", "DIY"} | set(self.b.get("known_acronyms") or [])
         known |= set(re.findall(r"\b[A-Z]{2,6}\b", " ".join(str(f.get("value", "")) + " " + str(f.get("claim", "")) + " "
                                                             + " ".join(f.get("also") or [])
-                                                            for f in self.sheet.get("facts", []) if f.get("status") in USABLE)))
+                                                            for f in self.sheet.get("facts", []) if f.get("status") in SUPPORT)))
         known |= set(re.findall(r"\b[A-Z]{2,6}\b", " ".join([self.b.get("client") or ""] + list(self.b.get("proper_nouns") or [])
                                                             + [o.get("label") or "" for o in self.lm.get("official", [])])))
         known |= set(re.findall(r"\b([A-Z]{2,6})!", body))  # campaign names such as THINK!
@@ -1417,7 +1420,7 @@ class Linter:
 
         def tk(s):
             return {w for w in tokens(s, syn) if w not in stop and len(w) > 2}
-        usable = [f for f in self.sheet.get("facts", []) if f.get("status") in USABLE]
+        usable = [f for f in self.sheet.get("facts", []) if f.get("status") in SUPPORT]
         facts = [tk(" ".join([str(f.get("value", "")), str(f.get("claim", "")), " ".join(f.get("also") or [])]))
                  for f in usable]
         fnums = [(set(re.findall(r"\d+(?:\.\d+)?", str(f.get("value", "")) + " " + str(f.get("claim", "")))), fs)
@@ -1677,7 +1680,7 @@ class Linter:
         num = r"(\d+(?:[.,]\d+)?)"
         floors, ceilings = set(), set()
         for f in self.sheet.get("facts", []):
-            if f.get("status") not in USABLE:
+            if f.get("status") not in SUPPORT:
                 continue
             v = str(f.get("value", "")).lower()
             floors |= {m.group(2) for m in re.finditer(r"\b(at least|minimum(?: of)?|no less than|not less than)\s*[£$€]?" + num, v)}
@@ -1958,7 +1961,7 @@ class Linter:
         must carry it. A 15-year average under a 10-year heading misstates its own evidence (RULES: a heading
         promises exactly what its section delivers)."""
         evidence = " ".join(f"{f.get('value', '')} {f.get('claim', '')}" for f in self.sheet.get("facts", [])
-                            if f.get("status") in USABLE).lower()
+                            if f.get("status") in SUPPORT).lower()
         for b in self.blocks:
             if b["type"] not in ("h2", "h3") or not b["text"].rstrip().endswith("?"):
                 continue

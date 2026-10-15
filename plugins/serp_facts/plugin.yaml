@@ -1,0 +1,7 @@
+name: serp_facts
+kind: script
+description: The fact table Google has already validated. Extracts the points the page-one pages state (figures, rules, definitions, steps), clusters statements of the same point, counts how many ranking sites make it, resolves contradictions in favour of the higher-ranked page, lets a verified authority fact override a competitor, and records each point as a usable `serp` fact with its source page and rank. Local text only (no network, no model call).
+needs: [competitor_scrape, semantic_graph, official_facts]
+modes: [deep, quick]
+budget_s: 3
+outputs: [research/serp_facts.json, serp facts appended to fact_sheet.json]

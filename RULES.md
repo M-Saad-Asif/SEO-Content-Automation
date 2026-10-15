@@ -1,6 +1,6 @@
 # RULES — writing, accuracy and SEO
 
-Load once per run. `seo.py lint` checks most of these mechanically; the rest are yours to judge. Your only inputs are the brief, this file and `writer_pack.md`. The rules hold for any kind of site: a shop, a service business, a publisher, a SaaS company, a public body.
+Load once per run. `seo.py lint` checks most of these mechanically; the rest are yours to judge. Your only inputs are the brief, this file and the run's data file: `write_brief.md` in the default (fast) run, `writer_pack.md` in a deep run. The rules hold for any kind of site: a shop, a service business, a publisher, a SaaS company, a public body.
 
 ## 0. The page's job (read the writer pack's "Page job" first)
 
@@ -13,7 +13,7 @@ Load once per run. `seo.py lint` checks most of these mechanically; the rest are
 
 ## 1. Accuracy
 
-1. Every number, size, price, fee, date, time limit, deadline, official body, product feature and interface label (a setting name, a button) must appear in the writer pack. If it isn't there, verify it in step 2 or write around it. Don't estimate or fill in from memory.
+1. Every number, size, price, fee, date, time limit, deadline, official body, product feature and interface label (a setting name, a button) must appear in the run's facts (authority, page-one `serp`, client). If it isn't there, write around it. Don't estimate or fill in numbers from memory.
 2. Empty beats fake. A table cell holds a verified fact, or the row or column goes. Never write filler like "Varies", "TBD" or "N/A".
 3. Compute; don't reason by eye. Fits, limits, thresholds, counts and rankings come from the pack's computed lines. You may also work out new numbers from facts (a worked example, a total, a per-kg figure): keep the numbers it comes from in the same paragraph and say it the way a person would ("at 30 g per unit, 20 units need about 600 g, so two batches of 300 g"), never as a formula in brackets. Round a worked figure to the precision of its source: a rough guide gives "about 80", not "80.5".
 4. No absolutes ("always", "never", "all", "guarantee", "100%", "instant") unless the fact itself says so.
@@ -22,7 +22,7 @@ Load once per run. `seo.py lint` checks most of these mechanically; the rest are
 7. When the answer depends on a condition (a type, a size class, an age band, a country), the sentence names the condition. Don't compress two cases into one rule. A rule from one product's guide (a maker's chart for its own product, an app's own settings) applies to that product: say so, don't present it as general.
 8. YMYL pages (health, money, law, safety): every factual statement maps to a fact; give the cautions the authorities give (who should check with a professional, upper limits, risks); and when you tell the reader to do something that costs money (a fee, a service, a lost benefit), say what it costs and when it is worth it. Don't invent a cost line where there is no real cost.
 9. Give each product or option at least one honest limitation derived from the data. Never invent a scenario.
-10. Only verified or captured facts are usable. A pending fact is not stated until step 2 verifies it.
+10. Usable facts: verified, captured and operator facts, and `serp` facts (points the page-one pages make, section 1.25). A pending, `serp_overridden` or conflicting value is never stated.
 11. Don't state prices unless the pack says prices may be stated.
 12. Counts and superlatives come from the pack ("Counts to copy", rankings). Never call something the lightest, cheapest, only or most popular unless the pack says so.
 13. Use the page's locale: its units (en-US: °F, inches, pounds first, metric in brackets; elsewhere metric), its everyday words (the locale's word for the thing, not another country's), currency, spelling and authorities. Another country's rules appear only when the query or a heading asks about that country.
@@ -37,6 +37,7 @@ Load once per run. `seo.py lint` checks most of these mechanically; the rest are
 22. A client claim keeps its conditions: "free delivery on orders over £X" never becomes "free delivery". Counts and figures about the client come from the approved claims, never from an older page. When the page explains a condition or a cost that applies to every product of this kind (flexible or not, fees, minimums, notice periods, warranty terms), say how the client's own product stands on it, from its pages, and give every cost layer its fee page lists, not only the headline one.
 23. Credit a legal duty to the law that sets it (the regulation or act, as the source names it), not to the body's guidance about it.
 24. A fact's scope travels with it: when the pack or dossier says a fact applies to a group, product, version or year ("applies to: …"), the sentence that uses it names that scope or stays within it.
+25. **Page one is validated evidence.** Google already ranks the page-one results for this query in this market, so a point they make (`serp` facts) is stated as fact without a separate research trip. Your own knowledge is the sanity check: leave out a point you know is wrong or outdated, and say so in your closing line; never "research" it. When page-one pages contradict each other, the higher-ranked page wins (the brief lists the resolved contradictions; never use a losing value). A verified authority fact beats any competitor. Every point page one covers belongs on this page unless it is off the page's job: missing one is lost information. The questions searchers ask that page one leaves unanswered (People Also Ask, related searches) are the information gain: answer each.
 
 ## 2. Voice: write as the expert, not as a summary of sources
 
@@ -50,10 +51,10 @@ Load once per run. `seo.py lint` checks most of these mechanically; the rest are
 - State conditions the way people do: "If you rent, …", not "When you rent, …" for a case that may not apply.
 - Write as the client's page. Where the client's products, services or guides help the reader take the next step, link them naturally inside the relevant section (see section 6). Don't end with a list of links.
 - Describe the client's own product or service directly, from its approved claims ("Acme sells refurbished laptops with a 12-month warranty"). Never quote the client's own tagline back at the reader in the third person ("X's site invites you to…"), and link a client claim only to the page the pack lists as its source.
-- Prefer independent sources (authorities, charities, professional bodies, research) over a competitor of the client. When a fact exists only in a competitor's material (the pack marks these), attribute it as theirs, limit it to their product, never build the main answer on it, and never make it the first link on the page.
+- Prefer independent sources (authorities, charities, professional bodies, research) over a competitor of the client for links. A page-one point about the topic (section 1.25) is stated in your own words with no link to the competitor. A fact about a competitor's own product or offer (its price, its feature) is attributed as theirs, limited to their product, never the main answer and never the first link on the page.
 - When the client publishes its own method, plan or figures for this question, the page leads with the client's way, in the client's voice; other sources are comparisons or support. Name a source only where it adds weight, not on every step.
 - When sources disagree (one says N days, another 2N), say which you recommend and why, in one sentence. Never leave the reader to reconcile them.
-- Never mention the research itself ("the top results", "ranking pages", "most guides online"). State verified information in your own words; agreement between competitors alone does not establish a fact.
+- Never mention the research itself ("the top results", "ranking pages", "most guides online"). State the facts in your own words, as the page's author.
 - Questions about a competitor's product ("Is <competitor> a …?") are not sections on the client's page. Mention the competitor where a comparison helps, at most.
 
 ## 3. Sentences

@@ -39,7 +39,7 @@ def _toks(s: str, syn=None) -> set:
 def _facts(sheet: dict) -> list[dict]:
     out = []
     for f in sheet.get("facts", []):
-        if f.get("status") not in ("verified", "captured", "operator"):
+        if f.get("status") not in ("verified", "captured", "operator", "serp"):
             continue
         text = f"{f.get('claim', '')} {f.get('value', '')}"
         out.append({"id": f.get("id"), "text": text, "value": str(f.get("value", "")), "scope": f.get("scope"),

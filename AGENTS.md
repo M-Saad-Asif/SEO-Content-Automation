@@ -16,7 +16,7 @@ The request is what the user typed: a page address (the page is read first: its 
 
 Never: edit anything under `scripts/`, `plugins/`, `RULES.md`, `WORKFLOW.md`, `clients/` or the brief; open other runs or backup folders; run `seo.py` commands the task did not print; run `done` for a task you have not finished; ask the user anything mid-run.
 
-Use `python3` where `python` is not on PATH. Add `--mode quick` to `start` or `next` only when the user asks for a quick run. First-time setup on a machine is one command, `python install.py` (packages, spaCy model, API keys into `.env`, and `/page-seo` installed into every coding agent: Claude Code, Cursor, Codex, Antigravity, Gemini CLI, Windsurf, Copilot). If `doctor` fails on packages or keys, that is the fix.
+Use `python3` where `python` is not on PATH. Runs use the fast flow by default (research scripts, one write, one combined check, validate: about five minutes). Add `--mode deep` to `start` or `next` only when the user asks for the full agent review (researcher, expert, editor and fact-checker passes). First-time setup on a machine is one command, `python install.py` (packages, spaCy model, API keys into `.env`, and `/page-seo` installed into every coding agent: Claude Code, Cursor, Codex, Antigravity, Gemini CLI, Windsurf, Copilot). If `doctor` fails on packages or keys, that is the fix.
 
 ## Roles the tasks name
 

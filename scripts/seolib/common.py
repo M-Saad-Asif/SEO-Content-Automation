@@ -501,6 +501,16 @@ def classify(status: int, text: str) -> str:
     return "error"
 
 
+async def _deadline(coro, seconds: float):
+    """A wall-clock cap on one request. Without a running event loop (a coroutine driven by hand, as the offline
+    tests do) there is nothing to time against, so the request simply runs."""
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return await coro
+    return await asyncio.wait_for(coro, seconds)
+
+
 async def fetch_many(reqs: list[dict], refresh: bool = False, concurrency: int = 12,
                      timeout: float = 12.0, attempts: int = 2) -> dict[str, dict]:
     """reqs: [{url, kind, parse: html|json|xml|status}] -> {url: result}.
@@ -530,12 +540,14 @@ async def fetch_many(reqs: list[dict], refresh: bool = False, concurrency: int =
             t0 = time.time()
             try:
                 async with sem:
+                    # httpx's timeout is per read: a server trickling bytes can hold a request far longer. One
+                    # wall-clock deadline per request keeps a slow site from stalling the whole research wave.
                     if parse == "status":
-                        resp = await client.head(url, follow_redirects=False)
+                        resp = await _deadline(client.head(url, follow_redirects=False), timeout + 3)
                         if resp.status_code in (405, 403, 400, 404, 501):
-                            resp = await client.get(url, follow_redirects=False)
+                            resp = await _deadline(client.get(url, follow_redirects=False), timeout + 3)
                     else:
-                        resp = await client.get(url, follow_redirects=follow)
+                        resp = await _deadline(client.get(url, follow_redirects=follow), timeout + 3)
                 body = resp.text if parse != "status" else (resp.text[:4000] if resp.request.method == "GET" else "")
                 st = resp.status_code
                 res = {"url": url, "status": st, "final_url": str(resp.url),
@@ -567,7 +579,7 @@ async def fetch_many(reqs: list[dict], refresh: bool = False, concurrency: int =
                 if st == 429 and attempt < attempts:
                     # the site asked us to slow down: wait as long as it says (capped), then ask once more
                     ra = resp.headers.get("retry-after", "")
-                    await asyncio.sleep(min(float(ra) if ra.replace(".", "", 1).isdigit() else 6.0, 20.0))
+                    await asyncio.sleep(min(float(ra) if ra.replace(".", "", 1).isdigit() else 3.0, 5.0))
                     continue
                 break
             except Exception as e:  # timeout, DNS, TLS
@@ -577,7 +589,10 @@ async def fetch_many(reqs: list[dict], refresh: bool = False, concurrency: int =
                     continue
                 break
         key = _fetch_key(parse, url)
-        if res and res["state"] in ("ok", "redirect") or (parse == "status" and res and res["status"]):
+        # a sitemap that timed out (huge, slow XML) is remembered for a day like a good one, so every run doesn't
+        # wait out the same timeouts again; the page just has fewer known internal links
+        timed_out_map = r.get("kind") == "sitemap" and res and res.get("error") in ("TimeoutError", "ReadTimeout")
+        if res and res["state"] in ("ok", "redirect") or (parse == "status" and res and res["status"]) or timed_out_map:
             res = cache_put(key, res)
         out[url] = res
 

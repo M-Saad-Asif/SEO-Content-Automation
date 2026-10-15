@@ -3,12 +3,14 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import html
 import json
 import re
 from pathlib import Path
 
 from . import common as C
 from .nlp import tokens
+from .graph import UI_HEADING
 from .pagejob import COMMERCIAL, lines as page_job
 
 SCHEMA_VERSION = 1
@@ -100,27 +102,56 @@ def build(rd: Path) -> dict:
             value["evidence_refs"] = evidence(example.get("sentence", ""), example.get("source", ""))
     for entity in graph.get("entities", []):
         entity["source_urls"] = [p["url"] for p in source_pages if C.host(p["url"]) in entity.get("domains", [])]
-    facts = [f for f in sheet.get("facts", []) if f.get("status") in ("verified", "captured", "operator")]
+    facts = [f for f in sheet.get("facts", []) if f.get("status") in ("verified", "captured", "operator", "serp")]
     sections = prioritise(outline.get("sections") or [], brief)
     for sec in sections:
         section_terms = content_words(sec.get("title", "") + " " + " ".join(sec.get("entities") or []), brief.get("synonyms"))
         sec["fact_ids"] = [f["id"] for f in facts if section_terms & content_words(str(f.get("claim", "")) + " " + str(f.get("value", "")), brief.get("synonyms"))]
+    # Coverage = everything page one already covers (validated by its ranking) + what searchers ask that page one
+    # leaves unanswered (the information gain). A point only one ranking site makes is still validated.
+    synonyms = brief.get("synonyms")
+    head_sets = [content_words(h, synonyms) for p in comp.get("pages", []) for _, h in p.get("outline", [])]
+
+    def gain(text: str) -> bool:
+        words = content_words(text, synonyms)
+        return bool(words) and not any(len(words & h) >= max(2, 0.6 * len(words)) for h in head_sets)
+
+    def searcher_asks(item: dict) -> bool:
+        """Google's own questions for this searcher stay on the page unless they belong to another market, another
+        brand or a shopping query; "drifts from the topic" is not a reason to lose a question Google asks."""
+        return str(item.get("source") or "").startswith("paa") and not re.search(
+            r"another (market|country)|brand|for sale|shop|price", str(item.get("reason") or ""), re.I)
+
     coverage = []
     for section in sections:
         coverage.append({"id": section["id"], "kind": "topic", "text": section["title"], "placement": section["placement"],
-                         "required": bool(section.get("task_match") or len(section.get("covered_by") or []) >= 2),
+                         "required": True, "covered_by": len(section.get("covered_by") or []),
+                         "info_gain": not section.get("covered_by") and gain(section["title"]),
                          "fact_ids": section["fact_ids"], "status": "place_or_explain_exclusion"})
         for part in [section] + section.get("subsections", []):
             for question in part.get("questions", []):
                 coverage.append({"id": f"Q{len(coverage) + 1:03d}", "kind": "question", "text": question["q"],
-                                 "section_id": section["id"], "required": question.get("decision") not in ("drop", "separate_page"),
+                                 "section_id": section["id"],
+                                 "required": question.get("decision") not in ("drop", "separate_page") or searcher_asks(question),
+                                 "info_gain": gain(question["q"]),
                                  "source": question.get("source"), "decision": question.get("decision"),
                                  "status": "place_or_explain_exclusion"})
     placed = {c["text"].lower() for c in coverage}
+    for angle in list(outline.get("single_site_angles") or []) + [q.get("q") for q in outline.get("single_site_questions") or []]:
+        angle = html.unescape(angle or "").strip()
+        generic = {"more", "inspiration", "article", "summary", "conclusion", "introduction", "overview", "thoughts",
+                   "final", "this", "contents", "table", "related", "read", "also", "know", "did", "you"}
+        if angle and angle.lower() not in placed and not UI_HEADING.search(angle) and \
+                len(content_words(angle, synonyms) - generic) >= 2:
+            coverage.append({"id": f"Q{len(coverage) + 1:03d}", "kind": "competitor_point", "text": angle,
+                             "required": True, "source": "page_one_competitor", "info_gain": False,
+                             "status": "place_or_explain_exclusion"})
+            placed.add(angle.lower())
     for query in qmap.get("queries", []):
         if query["query"].lower() not in placed:
             coverage.append({"id": f"Q{len(coverage) + 1:03d}", "kind": "query", "text": query["query"],
-                             "required": query.get("decision") in ("h2", "cover_in_section"), "source": query.get("source"),
+                             "required": query.get("decision") in ("h2", "cover_in_section") or searcher_asks(query),
+                             "info_gain": gain(query["query"]), "source": query.get("source"),
                              "decision": query.get("decision"), "reason": query.get("reason"), "url": query.get("url"),
                              "status": "place_or_explain_exclusion"})
             placed.add(query["query"].lower())
@@ -132,7 +163,8 @@ def build(rd: Path) -> dict:
         for question in questions:
             if question and question.lower() not in placed:
                 coverage.append({"id": f"Q{len(coverage) + 1:03d}", "kind": "question", "text": question,
-                                 "required": source == "query_map_h2", "source": source,
+                                 "required": source in ("query_map_h2", "paa"), "source": source,
+                                 "info_gain": gain(question),
                                  "status": "assess_relevance_and_place_or_explain_exclusion"})
                 placed.add(question.lower())
     ranked = serp.get("organic", [])[:10]
@@ -148,7 +180,9 @@ def build(rd: Path) -> dict:
         "opening_priority": {"task": brief.get("target_query"), "page_type": brief.get("page_type"),
             "instructions": "Give the main answer or relevant offer first, then its immediate requirements and supporting detail. Background and edge cases follow. Preserve material decision-making limitations.",
             "commercial": brief.get("page_type") in COMMERCIAL},
-        "usage_rules": ["All source blocks and competitor semantic values are evidence leads until verified; never copy their wording or treat their agreement as independent proof.",
+        "usage_rules": ["usable_facts with status serp were stated by pages Google ranks on page one for this query: they are validated. State them in your own words (never copy a competitor's wording, never link a competitor as the source); leave one out only when your own knowledge says it is wrong or outdated.",
+            "Where page-one sites contradict each other, the serp fact (the higher-ranked page) wins; never use the values listed under its conflicts. A verified authority fact beats any serp fact; serp_overridden facts are not usable.",
+            "Cover every required coverage item: what page one covers is the baseline, and info_gain items (searcher questions page one leaves unanswered) are what makes this page worth ranking.",
             "Use usable_facts with their source, scope, market and conditions. A client's published claim proves publication, not independent outcomes.",
             "Resolve every required coverage item with a heading/body placement or an explicit evidence-based exclusion. Do not force unrelated questions onto the page.",
             "Section priorities are editorial hints, not known crawler weights or guaranteed ranking signals.",

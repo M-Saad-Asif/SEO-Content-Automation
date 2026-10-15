@@ -23,6 +23,16 @@ Every stage of the work a senior SEO does is a plugin in `plugins/<name>/`, run 
 | 9c | Internal links (`plugins/internal_links`): 3–6 contextual links on each target's main term (Koray's rules) | script ranks, linker places | `internal_links_plan.md`, `internal_links.md` |
 | 10 | Re-validate, date stamp, eval | script | `final.md` (`updated:`), `eval.md` |
 
+## The fast flow (default)
+
+`next` in fast mode: research scripts (≤ 60 s) → `write_brief.md` (`seolib/writebrief.py`) → one DRAFT task → one combined FIX task (lint blocks, review CHECKs, likely-missing coverage, warnings) → validate → eval → DONE. Target: under five minutes. Further fix rounds only for remaining blocking lines (max 2). `--mode deep` keeps the full table above.
+
+Facts in fast mode come from three places, in this order of authority: verified authority pages (`official_facts`), the client's own pages, and `serp_facts`: the points the page-one results state, clustered by meaning, counted by how many ranking sites make them, with contradictions resolved in favour of the higher-ranked page and People Also Ask answers added. `serp` facts support content in lint (numbers, rules, terms) but never make a competitor a link or citation target.
+
+Coverage (`article_context.json` `coverage_requirements`) is the union of what page one covers (every outline section, every point a single ranking site makes under its own heading) plus the searcher questions page one leaves unanswered (`info_gain: true`). PAA questions survive the "drifts from the topic" heuristic; only another market's, another brand's or shopping questions are dropped.
+
+Speed work (October 2026): spaCy lemmatisation is batched (`nlp.prime`) and cached, URL slugs are prefiltered by shared stems before tagging (the sitemap of a big site was ~7,000 model calls), every fetch has a wall-clock deadline, Spider renders all competitor pages at once with a 25 s budget, and plugins start as soon as their own dependencies finish (no wave barrier).
+
 ## The research plugins (stage 1)
 
 Run in waves by `scripts/seolib/harness.py`; plugins in one wave run in parallel. Observed order on a deep run: **foundation, serp_intel** → **competitor_scrape, site_profile, reddit_voice, gsc_insights, current_page** → **info_gain, keyword_research, official_facts** → **query_map** → **semantic_graph** → **topic_outline, research_plan**.
