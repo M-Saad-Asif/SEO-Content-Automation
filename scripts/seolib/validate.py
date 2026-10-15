@@ -211,6 +211,12 @@ def write_report(rd: Path, sheet: dict, res: dict, ok: bool | None = None) -> No
     L = []
     L.append(f"# Run report: {sheet['brief']['client']} — {sheet['brief']['page_url']}\n")
     L.append(f"**Status: {'PASS' if ok else 'FAIL'}** · {s.get('block', 0)} blocking · {s.get('warn', 0)} warnings · {s.get('words', 0)} words · mode {(sheet.get('research') or {}).get('mode') or sheet['brief'].get('mode')}\n")
+    same = (C.load_json(rd / "link_map.json") or {}).get("client_related", {}).get("same_topic", [])
+    if same and (sheet["brief"].get("task") or "new") != "rewrite":
+        L.append("## Action needed before publishing\n")
+        L.append(f"{sheet['brief']['client']} already has a page on this query: " + ", ".join(same[:3]) + ". Two pages "
+                 "on one query compete with each other. Publish this page at that address (replacing it), or "
+                 "301-redirect the old page to the new one.\n")
     L.append("## Timing\n")
     mode = (sheet.get("research") or {}).get("mode", "quick")
     L.append(table(timing, mode))
@@ -224,6 +230,14 @@ def write_report(rd: Path, sheet: dict, res: dict, ok: bool | None = None) -> No
         L.append("None.")
     for f in unresolved:
         L.append(f"- **{f['severity']}** `{f['rule']}` (line {f['line']}): {f['text'][:200]} — {f['reason']}")
+    try:  # every kind of research, and how much of it reached the writer (a LOST row is a loophole)
+        from .flow_audit import audit
+        rows = audit(rd)
+        L.append("\n## Research that reached the writer\n")
+        L.append("| Research | Reached the brief | Missing |\n|---|---|---|")
+        L += [f"| {n} | {g}/{t} | {', '.join(m)[:160]} |" for n, g, t, m in rows if t]
+    except Exception as e:
+        L.append(f"\n(research audit skipped: {type(e).__name__})")
     L.append("\n## Decisions the automation made\n")
     qs = sheet.get("decisions") or []
     L += [f"- {q}" for q in qs] or ["None."]

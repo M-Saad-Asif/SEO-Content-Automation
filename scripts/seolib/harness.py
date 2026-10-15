@@ -101,7 +101,12 @@ def run_research(brief_path: str, mode: str = "deep", refresh: bool = False, mar
     ctx = Ctx(brief, rd, mode, refresh)
     ms = {n: m for n, m in manifests().items() if applies(m, brief, mode)}
     done, times = _run_waves(ms, ctx)
+    from .prep import client_site_search
+    n_site = client_site_search(rd, brief)  # the last paid search, only when one is left
+    if n_site:
+        ctx.decide(f"Google's site search added {n_site} of the client's own pages that its sitemaps don't list.")
     s = serper.spent()
+    ctx.credits = max(ctx.credits, s["spent"])  # every paid search, including the site search
     if s["refused"]:
         ctx.decide(f"Serper credit cap ({s['cap']} a run): {len(s['refused'])} search(es) skipped: "
                    + "; ".join(s["refused"][:5]))

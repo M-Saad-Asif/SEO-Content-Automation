@@ -162,9 +162,12 @@ def run(ctx):
     # none), unless the questions were already borrowed from another market's SERP. Most PAA questions are covered
     # by the top 10 pages, which are read in full; the 3-credit cap (seolib/serper.py) keeps the rest for the
     # official sources.
+    # One paid search follows People Also Ask one level down (or the closest autocomplete variant when there is no
+    # PAA): measured on "how to unblock a sink", it brought 4 deeper questions, 8 related searches and the source
+    # pages for about 8 planned headings the first page alone didn't give.
     exp_queries = []
     if ctx.deep() and paa_locale == b["locale"]:
-        exp_queries = (paa[:1] if paa else [a for a in auto if len(a.split()) >= len(q.split())][:1])
+        exp_queries = paa[:1] if paa else [a for a in auto if len(a.split()) >= len(q.split())][:1]
     expansions = {}
     if exp_queries:
         more, cr = serper.batch([("search", e) for e in exp_queries], paa_locale)

@@ -403,14 +403,23 @@ def next_step(brief_path: str, mode: str | None = None) -> None:
             rd, log = _quiet(run_research, brief_path, "deep")  # one mode: every research plugin, every run
             (rd / "research_log.txt").write_text(log, encoding="utf-8")
         print(f"Research scripts finished (log: {rel(rd)}/research_log.txt).")
-        from .gain import register as gain_register
-        n = len(gain_register(rd))
-        if gain_files(rd):
-            print(f"Information gain: {n} item(s) beyond page one kept.")
         st = _state(rd)
         st["mode"] = "full"
         _save_state(rd, st)
     st = _state(rd)
+    # the researchers' items, whenever they arrive: the scripts often finish first (then the branch above is skipped)
+    if st.get("gain_asked") and not st.get("gain_done") and not (rd / "draft.md").exists():
+        from .gain import files as gain_files, register as gain_register, verify as gain_verify
+        if gain_files(rd) and not (rd / "research" / "gain.json").exists():
+            print("Checking the researchers' quotes against their pages…")
+            _quiet(gain_verify, rd)
+        n = len(gain_register(rd))
+        if gain_files(rd):
+            print(f"Information gain: {n} item(s) beyond page one kept.")
+        for f in ("write_brief.md", "plan.json"):  # a brief built before the items arrived is built again
+            (rd / f).unlink(missing_ok=True)
+        st["gain_done"] = C.now_iso()
+        _save_state(rd, st)
     _end_agent_stage(rd, st)
     deep = st.get("mode", "deep") == "deep"
     R = rel(rd)

@@ -70,9 +70,12 @@ def fix_text(md: str) -> tuple[str, int]:
     n_words = sum(len(" ".join(parts).split()) for _, _, parts, _ in prose) or 1
     cap = max(3, round(n_words / 500))
     cands = [(i, j, first and j == 0) for i, _, parts, first in prose for j, p in enumerate(parts) if _invert_if(p) != p]
+    # every "If …," opener counts against the allowance, including the ones too complex to turn round here
+    stuck = sum(1 for i, _, parts, _ in prose for j, p in enumerate(parts)
+                if re.match(r"^If\b[^,]*,", p) and _invert_if(p) == p)
     hard = [c for c in cands if c[2]]
     soft = [c for c in cands if not c[2]]
-    flip = {(i, j) for i, j, _ in hard + soft[max(0, cap - len(hard)):]}
+    flip = {(i, j) for i, j, _ in hard + soft[max(0, cap - len(hard) - stuck):]}
     n = 0
     for i, prefix, parts, _ in prose:
         new = []

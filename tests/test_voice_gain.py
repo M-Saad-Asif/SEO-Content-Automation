@@ -205,6 +205,15 @@ class ResearcherAgentTests(unittest.TestCase):
             self.assertIn("gain_X.yaml", text)
             self.assertTrue(json.loads((rd / "state.json").read_text(encoding="utf-8")).get("gain_asked"))
 
+    def test_every_claude_agent_file_has_valid_frontmatter(self):
+        # an unquoted ": " in a description once made Claude Code drop the seo-writer agent without a word
+        import yaml
+        for f in sorted((ROOT / ".claude" / "agents").glob("*.md")):
+            with self.subTest(agent=f.name):
+                front = yaml.safe_load(f.read_text(encoding="utf-8").split("---")[1])
+                self.assertEqual(front["name"], f.stem)
+                self.assertTrue(front["description"])
+
     def test_alive_tells_a_running_process_from_a_finished_one(self):
         from seolib.driver import _alive
         self.assertTrue(_alive(os.getpid()))

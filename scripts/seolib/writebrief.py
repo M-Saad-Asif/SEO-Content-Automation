@@ -76,7 +76,9 @@ def build(rd: Path) -> Path:
           "keep its key words)",
           "Each H2 answers its question in its first one or two sentences, then the detail. H3s sit under their H2. "
           "\"also answer\" lines are answered inside that section in those words. A fact id listed under a heading is "
-          "the material for it; any fact below may be used where it fits.", ""]
+          "the material for that heading only: other parts are written at the same time, so a fact listed under "
+          "another heading is that writer's, and using it again makes the page say the same thing twice. A fact "
+          "listed under no heading may be used once, where it fits best.", ""]
     W += render(plan, {f["id"]: f for f in facts})
 
     gain = [f for f in facts if str(f.get("id", "")).startswith("gain:")]

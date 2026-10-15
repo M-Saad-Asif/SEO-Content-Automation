@@ -57,13 +57,22 @@ class AllowanceTests(unittest.TestCase):
         secs = [FILL * 3 + PASSIVE for _ in range(8)]
         self.assertIn("S08-passive", blocks(page(secs)))
 
-    def test_some_statement_headings_are_fine(self):
+    def test_statement_headings_must_be_built_from_the_topics_entities(self):
         secs = [FILL * 5 for _ in range(8)]
         heads = [f"How long does part {i} take?" for i in range(8)]
-        heads[2], heads[5], heads[6] = "Drying times by paint type", "Tools for the job", "Weather and drying"
-        self.assertNotIn("H03-question-heading", blocks(page(secs, heads)))
-        heads = [f"Drying topic number {i}" for i in range(8)]
+        heads[2], heads[5] = "Drying times by paint type", "Fence paint drying in cold weather"
+        self.assertFalse({"H03-question-heading", "H12-vague-heading"} & blocks(page(secs, heads)))
+        heads[5] = "Tools for the job"  # names no entity of the topic
         self.assertIn("H03-question-heading", blocks(page(secs, heads)))
+
+    def test_hype_headings_are_never_allowed(self):
+        secs = [FILL * 5 for _ in range(8)]
+        for h in ("The ultimate guide to fence paint", "Navigating fence paint drying", "A new era of quick-dry paint",
+                  "Everything you need to know about drying"):
+            with self.subTest(h=h):
+                heads = [f"How long does part {i} take?" for i in range(8)]
+                heads[3] = h
+                self.assertIn("H12-vague-heading", blocks(page(secs, heads)))
 
     def test_varied_human_pages_pass_the_style_allowances(self):
         style = {"K04-if-opener", "K10-hedge", "K12-vague-quantity", "S08-passive", "H03-question-heading",

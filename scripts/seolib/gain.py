@@ -218,9 +218,12 @@ def register(rd: Path) -> list[dict]:
         else:
             decisions.append(f"Gain item \"{it['point'][:80]}\" dropped: its quote could not be checked on {host}.")
             continue
-        facts.append({"id": f"gain:{len(facts) + 1}", "claim": f"{it['who'] or host}: {it['point']}",
-                      "value": it["quote"], "point": it["point"], "who": it["who"] or host, "kind": it["kind"],
-                      "date": it.get("date") or "", "status": status, "basis": f"gain_{it['kind']}",
+        date = str(it.get("date") or "")
+        facts.append({"id": f"gain:{len(facts) + 1}", "claim": f"{it['who'] or host}" + (f" ({date})" if date else "")
+                      + f": {it['point']}", "value": it["quote"], "point": it["point"], "who": it["who"] or host,
+                      "kind": it["kind"], "date": date,
+                      "condition": (f"published {date}" if date else ""),  # the page's date is a citable figure too
+                      "status": status, "basis": f"gain_{it['kind']}",
                       "verified": status == "verified", "source_url": it["source"], "retrieved_at": C.now_iso()})
     with C.file_lock(rd / "fact_sheet.json"):
         sh = C.load_json(rd / "fact_sheet.json") or {}

@@ -155,14 +155,10 @@ def run(ctx):
     # or a YMYL brief. Then search the authorities that showed up, or the government of the place the query names.
     seen_gov = {domain(u) for u in cands if kind(u) == "government"}
     if not (ctx.brief.get("ymyl") is True or seen_gov) and GOV_SITES.get(region):
-        # nothing official ranked, but the reader's own government may still publish on it (safety, legal duties):
-        # one search; the relevance gate below keeps only pages that are about the query
-        res, cr = serper.batch([("search", f"{q} site:{GOV_SITES[region][0]}")], ctx.brief["locale"])
-        ctx.credits += cr
-        for r in res.values():
-            for o in r.get("organic", [])[:3]:
-                if o.get("link"):
-                    add(o["link"], True)
+        # nothing official ranked and the topic is not money, health, legal or safety: no paid search (it found
+        # nothing usable for "how to unblock a sink"); the run's last credit goes to the client's own pages instead
+        ctx.decide("No authority ranks for this query and it is not a YMYL topic: no official-source search; "
+                   "authority facts come from the page-one results and the researchers.")
     if ctx.brief.get("ymyl") is True or seen_gov:
         sites = sorted(seen_gov)[:2]
         # the sector's own regulators first: a lending question goes to the FCA and MoneyHelper

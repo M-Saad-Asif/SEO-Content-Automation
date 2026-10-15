@@ -78,7 +78,8 @@ Koray's sentence rules and the question-heading rule are applied the way a human
 | K12 vague quantity | about 1 per 600 words, at least 2 |
 | K14 mixed list | 1 |
 | K09 anchor not the target's title | about 1 per 1,000 words, at least 1 |
-| H03 statement H2 | 40% of H2s |
+| H03 statement H2 | none: an H2 is the reader's question or built from the topic's entities and attributes (half its words); H12 blocks filler headings ("The ultimate…", "Navigating…") everywhere |
+| C03 copied 8-11-word phrase | about 1 per 250 words, at least 4 (12+ words in a row always goes back) |
 | S01 sentence over 40 words, S02 answer over 50 words | about 1 per 1,000 words, at least 1 |
 | S08 passive voice (new) | about 1 per 1,000 words, at least 2 |
 
@@ -108,12 +109,12 @@ Information gain and GEO evidence (no Koray equivalent; both agree with his sour
 Humanization agrees with Koray throughout: his certainty-with-condition, numeric values, examples after plural nouns
 and specific entities are the same signals the research found in human writing.
 
-## 5. Every lint rule (136), by group
+## 5. Every lint rule (137), by group
 
 - **Page job / client**: P01-brand-late, P01-person-drift, P02-no-client-next-step, P02-no-closing-step, P03-steers-elsewhere, P04-warns-off-client, P05-another-sites-page, C01-banned-claim, C01-client-mention, C01-unapproved-claim, C02-client-positioning
 - **Accuracy**: A01-absolute, A02-boundary, A03-answer-not-self-contained, C03-copied-text, G01-ungrounded-rule, N01-untraced-number, N02-hardcoded-price, N03-unsupported-superlative, N04-count-check, T01-check-date, T01-placeholder, T02-unlinked-portal, T03-table-without-source
 - **Coverage**: K01-query-in-opening, K01-query-in-title, K02-secondary-query, Q01-question-not-answered, Q02-belongs-elsewhere, Q03-entity-coverage, Q03-planned-question-unanswered, Q04-gsc-query-dropped, Q04-off-topic-heading, Q05-title-misses-query, W01-word-count, M01-title-length, M02-meta-length
-- **Headings and structure**: H01-heading-length, H01-title-case, H02-h1, H03-question-heading, H04-title, H06-link-dump, H08-heading-echo, H11-heading-number-unanswered, K03-contextless-heading, K16-skipped-level, R01-repeated-structure, R02-hub-rebuilds-children
+- **Headings and structure**: H01-heading-length, H01-title-case, H02-h1, H03-question-heading, H12-vague-heading, H04-title, H06-link-dump, H08-heading-echo, H11-heading-number-unanswered, K03-contextless-heading, K16-skipped-level, R01-repeated-structure, R02-hub-rebuilds-children
 - **Koray sentence rules**: K04-if-opener, K05-bold, K05-bold-search-term, K06-acronym, K07-trigram, K08-long-paragraph, K09-anchor, K10-hedge, K11-opinion, K12-vague-quantity, K13-fluff, K14-list-mixed, K15-source-last
 - **Sentences and style**: S08-passive, S01-long-sentence, S02-snippet-length, S03-opener, S04-trailing-ing, S05-vague-opener, S06-noun-stack, S07-nominalisation, E01-em-dash, E02-exclamation, E03-rhythm, E04-fragments, E05-opener-monotony, E06-repeated-point, E07-closing-template, E08-bare-yes-no, E08-yes-no-template, E09-fragment-bullets, H01-contrast-framing, H02-self-answered-question, H03-colon-reveal, H04-punchline-closers, H05-meta-commentary, H07-attribution-density, H09-embedded-query, H10-teaser, X01-banned-phrase, X01-known-failure, X02-limited-phrase, X03-framework-label, X04-repeated-opener, X05-bold-label-bullets, I01-internal-code
 - **Locale**: L01-locale-spelling, L02-dimension-symbol, L03-locale-units

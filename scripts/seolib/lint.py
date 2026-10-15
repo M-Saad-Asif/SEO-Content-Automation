@@ -140,6 +140,15 @@ def words(s: str) -> list[str]:
     return re.findall(r"[A-Za-z0-9£$€][A-Za-z0-9£$€%'’.\-]*", s)
 
 
+# Headings that name no subject: hype and filler a person who knows the topic doesn't write
+HYPE_HEADING = re.compile(
+    r"(?i)\b(the ultimate|ultimate guide|new era|era of|journey|unlock(?:ing)?|secrets? (?:of|to)|deep dive|the power of|"
+    r"game[- ]chang\w*|revolution\w*|landscape|navigat\w+|demystif\w+|everything you need|all you need|a closer look|"
+    r"key (?:insights|takeaways|considerations|factors)|final thoughts|the bottom line|things to (?:know|consider)|"
+    r"what you need to know|tips and tricks|the world of|in today'?s|beyond the basics|unveil\w*|mastering|"
+    r"essential guide|comprehensive guide|complete guide|why it matters|the importance of|a (?:quick|brief) overview)\b")
+
+
 def unquote(s: str) -> str:
     return re.sub(r"[\"“][^\"”]{1,400}[\"”]", " ", s)
 
@@ -403,6 +412,27 @@ class Linter:
             elif b["type"].startswith("h") and include_headings:
                 yield b, b["text"]
 
+    def _content_words(self, s: str) -> set[str]:
+        from .plan import words as plan_words
+        return plan_words(s)
+
+    def entity_words(self) -> set[str]:
+        """The topic's entities and attributes as lemmas: the knowledge graph's entities, must-cover entities and
+        attributes, the query and secondary queries, the client and its products."""
+        if getattr(self, "_entity_words", None) is None:
+            kg = self.research.get("semantic_graph") or {}
+            names = [e.get("name") or "" for e in ((kg.get("graph") or {}).get("entities") or [])[:120]]
+            names += [e if isinstance(e, str) else e.get("entity", "") for e in kg.get("must_cover_entities") or []]
+            attrs = kg.get("attributes") or {}
+            for k, v in (attrs.items() if isinstance(attrs, dict) else enumerate(attrs)):
+                names += [str(k)] + ([str(x.get("name") or x.get("attribute") or "") if isinstance(x, dict) else str(x)
+                                      for x in v] if isinstance(v, list) else [str(v)])
+            names += [self.b.get("target_query") or "", self.b.get("client") or ""]
+            names += list(self.b.get("secondary_queries") or [])
+            names += [p.get("display_name", "") for p in self.sheet.get("products", [])]
+            self._entity_words = set().union(*(self._content_words(n) for n in names if n)) if names else set()
+        return self._entity_words
+
     # Style rules are an allowance per page, not a ban per sentence (operator, 16 Oct 2026): a human expert opens a
     # few sentences with "if", hedges once or twice, writes a statement heading or a passive sentence now and then.
     # Up to the allowance these are logged, not sent back; past it, the extra ones go back to the writer. The first
@@ -415,10 +445,10 @@ class Linter:
         "K12-vague-quantity": lambda w, h2: max(2, round(w / 600)),
         "K14-list-mixed": lambda w, h2: 1,
         "K09-anchor": lambda w, h2: max(1, round(w / 1000)),
-        "H03-question-heading": lambda w, h2: int(0.4 * h2),
         "S01-long-sentence": lambda w, h2: max(1, round(w / 1000)),
         "S02-snippet-length": lambda w, h2: max(1, round(w / 1000)),
         "S08-passive": lambda w, h2: max(2, round(w / 1000)),
+        "C03-copied-text": lambda w, h2: max(4, round(w / 250)),  # short shared phrases only; 12+ words always back
     }
     FIRST_ONLY = {"K04-if-opener", "K10-hedge", "K11-opinion", "K12-vague-quantity"}
 
@@ -438,12 +468,13 @@ class Linter:
             if not hits:
                 continue
             cap = fn(n_words, n_h2)
-            hard = [f for f in hits if rule in self.FIRST_ONLY and f["line"] in first
-                    and first[f["line"]][:60].strip() and f["text"][:60].strip() == first[f["line"]][:60].strip()]
+            hard = [f for f in hits if f.get("hard") or (rule in self.FIRST_ONLY and f["line"] in first
+                    and first[f["line"]][:60].strip() and f["text"][:60].strip() == first[f["line"]][:60].strip())]
             soft = [f for f in hits if f not in hard]
             free = max(0, cap - len(hard))
             for f in hard:
-                f["reason"] += " (the first sentence under a heading is the direct answer)"
+                f["reason"] += (" (12 or more words in a row: always rewritten)" if f.get("hard")
+                                else " (the first sentence under a heading is the direct answer)")
             for f in soft[:free]:
                 f["severity"] = "warn"
                 f["reason"] += f" (within this page's allowance of {cap})"
@@ -459,8 +490,11 @@ class Linter:
             nlp = _nlp()
         except Exception:
             return
-        units = [(b, s) for b, s in self.prose() if len(s.split()) >= 5]
-        texts = [re.sub(r"[\"“][^\"”]*[\"”]", "it", s) for _, s in units]
+        # a quotation is its source's wording, not ours: quotes are taken out per paragraph, before the sentences
+        # are split (a quote that holds a full stop would otherwise leave half of itself behind)
+        units = [(b, s) for b in self.blocks if b["type"] in ("p", "li")
+                 for s in sentences(re.sub(r"\"[^\"]*\"|“[^”]*”", "it", b["text"])) if len(s.split()) >= 5]
+        texts = [s for _, s in units]
         be = {"am", "is", "are", "was", "were", "be", "been", "being", "'re", "isn't", "aren't", "wasn't", "weren't"}  # not "'s": possessive
 
         def passive(doc) -> bool:  # a form of "be", an optional adverb or "not", then a past participle (tagger only)
@@ -1273,11 +1307,20 @@ class Linter:
                 self.add("H01-title-case", "block", b, t, "heading uses Title Case", "use sentence case: capitalise the first word and proper nouns only")
             if len(t) > 70:
                 self.add("H01-heading-length", "warn", b, t, f"heading is {len(t)} characters", "shorten to under about 70")
-            if b["type"] == "h2" and not (
+            m_hype = HYPE_HEADING.search(t)
+            if m_hype:
+                self.add("H12-vague-heading", "block", b, t, f"\"{m_hype.group(0)}\" is filler, not the subject of the "
+                         "section", "name the entity and the attribute the section covers (\"Drying time of oil-based "
+                         "fence paint\"), or ask the reader's question")
+            elif b["type"] == "h2" and not (
                     t.endswith("?") or re.match(r"(how|which|what|when|where|why|who|can|do|does|is|are|should|will)\b", t, re.I)):
-                self.add("H03-question-heading", "block", b, t, "H2 is not a reader question or How-to task (Koray: H2s are the "
-                         "reader's questions)",
-                         "phrase it as the entity-specific question the section answers")
+                # a statement heading is fine when it is entity-based: most of its words are the topic's entities and
+                # attributes ("Drying times by paint type"); otherwise it is a question or nothing (operator's rule)
+                hw = self._content_words(t)
+                if not hw or len(hw & self.entity_words()) / len(hw) < 0.5:
+                    self.add("H03-question-heading", "block", b, t, "H2 is neither the reader's question nor built from "
+                             "the topic's entities and attributes", "ask the entity-specific question the section answers, "
+                             "or name the entity and its attribute (\"Drying times by paint type\")")
         title = self.meta.get("title")
         if not title:
             self.add("H04-title", "warn", None, "(front matter)", "no title in front matter", "add `title:` (about 60 characters)")
@@ -1695,8 +1738,14 @@ class Linter:
             own = shingles(names_out)
             hit = own & strict
             if hit and not ui.search(s):
-                self.add("C03-copied-text", "block", b, s, f"copies a source word for word (\"{sorted(hit)[0]}…\")",
-                         "say it in your own words, or quote it and name the source")
+                # how long is the copied run? Each further shared 8-word window adds a word. A run of 12+ words is a
+                # copied sentence and always goes back; a shared 8-11-word phrase ("place the plunger directly over
+                # the drain") is how everyone words a step, allowed a few times a page (ALLOWANCE)
+                run = 7 + len(hit)
+                self.add("C03-copied-text", "block", b, s, f"copies a source word for word (\"{sorted(hit)[0]}…\", "
+                         f"about {run} words)", "say it in your own words, or quote it and name the source")
+                if run >= 12:
+                    self.findings[-1]["hard"] = True
             elif own & auth and not ui.search(s):
                 self.add("C03-copied-text", "warn", b, s, "repeats an authority's wording without quotation marks",
                          "quote the rule exactly (\"…\") or put it in your own words")

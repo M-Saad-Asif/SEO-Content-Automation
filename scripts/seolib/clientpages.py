@@ -14,8 +14,18 @@ JUNK = re.compile(r"(test|dummy|staging|preview|sample|data-entry|split-url|tmp|
                   r"deal-of-the-day|deals?/|/offers?/|/sale/|voucher|promo|discount-code|competition|giveaway|"
                   r"/account|/login|/register|/search|/wishlist|/feed|/rss|/tag/|/author/|/page/\d|\.xml$|\.json$)", re.I)
 LOCALE_SEG = re.compile(r"^([a-z]{2})([-_][a-z]{2})?$", re.I)
-COMMERCIAL = re.compile(r"/(collections?|products?|shop|store|services?|pricing|plans|book|booking|categories?|c)/|"
+COMMERCIAL = re.compile(r"/(collections?|products?|shop|store|services?|pricing|plans|book|booking|categories?|c|p|dp|item)/|"
+                        r"/p[a-z]{0,2}\d{3,}/|"  # a product id as the last segment: Toolstation's /…-drain-unblocker/pAJ964
                         r"(calculator|quiz|checker|finder|planner|estimator|tool|quote|booking|book-a|sign-up)", re.I)
+
+
+def _same_word(a: str, b: str) -> bool:
+    """One word, another form of it: "unblock" and "unblocker", "drain" and "drains" (4+ letters shared at the start)."""
+    return a == b or (min(len(a), len(b)) >= 4 and (a.startswith(b) or b.startswith(a)))
+
+
+def _shared(q: set[str], s: set[str]) -> set[str]:
+    return {w for w in q if any(_same_word(w, x) for x in s)}
 STOP = {"how", "to", "what", "is", "the", "a", "an", "my", "your", "for", "of", "in", "on", "do", "i", "can", "you",
         "are", "with", "and", "or", "be", "does", "should", "much", "many", "best", "when", "why", "which", "it", "get"}
 
@@ -48,9 +58,20 @@ def content(text: str, syn: dict | None = None) -> set[str]:
     return {w for w in tokens(text, syn) if w not in STOP and len(w) > 2 and not w.startswith("geo:")}
 
 
+ID_SEG = re.compile(r"^(?:[a-z]{0,3}\d{3,}[a-z0-9]*|\d+)$", re.I)
+
+
+def slug(url: str) -> str:
+    """The URL's descriptive part: its last segment, or the one before when the last is an id
+    ("/zep-drain-unblocker/p99444")."""
+    segs = [s for s in urlparse(url).path.rstrip("/").split("/") if s]
+    if len(segs) >= 2 and ID_SEG.match(segs[-1]):
+        return segs[-2]
+    return segs[-1] if segs else ""
+
+
 def slug_words(url: str, syn: dict | None = None) -> set[str]:
-    last = urlparse(url).path.rstrip("/").rsplit("/", 1)[-1]
-    return content(re.sub(r"[-_]+", " ", last), syn)
+    return content(re.sub(r"[-_]+", " ", slug(url)), syn)
 
 
 def template_families(urls: list[str], syn: dict | None = None) -> set[str]:
@@ -84,7 +105,7 @@ def related(urls: list[str], query: str, syn: dict | None = None, exclude: str =
     and commercial pages (the natural next step)."""
     from .nlp import prime, _rule_lemma
     q = content(query, syn) - TASK_VERBS or content(query, syn)
-    raw_slug = {u: re.sub(r"[-_]+", " ", urlparse(u).path.rstrip("/").rsplit("/", 1)[-1]).lower() for u in urls}
+    raw_slug = {u: re.sub(r"[-_]+", " ", slug(u)).lower() for u in urls}
     # words most of the site's URLs share ("dog" on a dog-food site) say nothing about relevance; counted with the
     # cheap rule lemmas over every URL, so the tagger only runs on slugs that can match the query at all
     df = {}
@@ -101,6 +122,10 @@ def related(urls: list[str], query: str, syn: dict | None = None, exclude: str =
     slugs = {u: slug_words(u, syn) for u in cand}
     qs = q - common or q
     same, guides, commercial = [], [], []
+    # a query word rare on this site says more than a common one: "unblock" (a few drain unblockers) over "sink"
+    # (hundreds of sinks, sink heaters and taps), so pages rank by the rarity of the words they share
+    dfq = {w: max(1, sum(1 for s in slugs.values() if any(_same_word(w, x) for x in s))) for w in q}
+    weight = lambda s: sum(1 / dfq[w] for w in _shared(q, s))
     fams = template_families(urls, syn)
     ex_path = urlparse(exclude).path.rstrip("/")
     for u, s in slugs.items():
@@ -108,17 +133,21 @@ def related(urls: list[str], query: str, syn: dict | None = None, exclude: str =
             continue
         if urlparse(u).path.rstrip("/").rsplit("/", 1)[0] in fams and not COMMERCIAL.search(urlparse(u).path + "/"):
             continue
-        hit = len(q & s) / len(q)
-        specific = qs & s  # matches on the query's distinctive words
+        hit = len(_shared(q, s)) / len(q)
+        specific = _shared(qs, s)  # matches on the query's distinctive words, in any form ("unblocker")
         if COMMERCIAL.search(urlparse(u).path + "/"):
             if specific:
-                commercial.append((hit, u))
+                commercial.append((hit + weight(s), u))
         elif (hit >= 0.75 and len(s - q) <= 1 and specific) or (s <= q and len(s) >= max(1, len(q) - 1) and specific):
             same.append((hit, u))
         elif specific and len(specific) / len(qs) >= 0.5:
-            guides.append((hit, u))
+            guides.append((hit + weight(s), u))
     pick = lambda xs, n: [u for _, u in sorted(xs, key=lambda x: -x[0])[:n]]
-    return {"same_topic": pick(same, 3), "guides": pick(guides, 8), "commercial": pick(commercial, 6)}
+    pool = pick(commercial + guides, 60)  # the plan re-ranks these by the topic's entities (plan.py, step 5)
+    top = max((x for x, _ in commercial), default=0)
+    commercial = [(x, u) for x, u in commercial if x >= 0.6 * top]  # only the pages close to the best match
+    return {"same_topic": pick(same, 3), "guides": pick(guides, 8), "commercial": pick(commercial, 6),
+            "candidates": pool}
 
 
 PROMO = re.compile(r"(\bsave\b|% off|\boff\b.*\bprice|free (delivery|shipping)|sign up|subscribe|newsletter|cookie|"

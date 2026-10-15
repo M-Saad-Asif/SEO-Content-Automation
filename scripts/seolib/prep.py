@@ -90,6 +90,48 @@ def load_brief(path: str | Path) -> dict:
 REUSE_DAYS = 7
 
 
+def client_site_search(rd: Path, brief: dict) -> int:
+    """Google's own list of the client's pages on this topic ("site:client query"): the pages its sitemaps miss
+    (Toolstation's tap guides are in no sitemap). Runs after the research waves, only when the run still has a paid
+    search left (the main search and the authorities come first). Returns the pages added."""
+    from . import serper
+    s = serper.spent()
+    if s["cap"] is not None and s["spent"] >= s["cap"]:
+        return 0
+    domain = re.sub(r"^https?://", "", brief.get("domain") or "").strip("/")
+    page_url = brief.get("page_url") or ""
+    lm = C.load_json(rd / "link_map.json") or {}
+    if not domain or not lm:
+        return 0
+    try:
+        res, _cr = serper.batch([("search", f"site:{domain} {brief['target_query']}")], brief.get("locale") or "en-GB")
+    except Exception:
+        return 0
+    found = [re.sub(r"[?&](srsltid|utm_\w+|gclid|fbclid)=[^&#]*", "", o.get("link", "").split("#")[0]).rstrip("?&")
+             for r in res.values() for o in r.get("organic", [])[:6] if o.get("link")]
+    found = [u for u in clean_internal(found, brief.get("locale") or "en-GB")
+             if u.rstrip("/") != page_url.rstrip("/") and C.host(u) == C.host(f"https://{domain}")]
+    if not found:
+        return 0
+    from .clientpages import related as rel_fn
+    cls = rel_fn(found, brief["target_query"], brief.get("synonyms"), exclude=page_url)
+    rel = lm.setdefault("client_related", {"same_topic": [], "guides": [], "commercial": []})
+    added = 0
+    for k in ("same_topic", "guides", "commercial"):
+        for u in cls.get(k, []):
+            if u not in rel.setdefault(k, []):
+                rel[k].append(u)
+                added += 1
+    for u in found[:4]:  # Google ranks them for the query: guides the URL words alone didn't match
+        if u not in rel["guides"] and u not in rel["same_topic"] and u not in rel["commercial"]:
+            rel["guides"].append(u)
+            added += 1
+    lm["client_candidates"] = list(dict.fromkeys((lm.get("client_candidates") or []) + found))
+    lm["internal"] = list(dict.fromkeys((lm.get("internal") or []) + found))
+    C.save_json(rd / "link_map.json", lm)
+    return added
+
+
 def run_dir(brief: dict, day: str | None = None) -> Path:
     """Today's run, unless a run for this page started within the last REUSE_DAYS: a run that crosses midnight
     (or is picked up again tomorrow) keeps its outline, draft and verified facts instead of starting over."""
@@ -230,14 +272,18 @@ def _cap_date(url: str) -> str:
 
 # ---------------------------------------------------------------- sitemap
 
-def pick_child_sitemaps(locs: list[str], brief: dict, limit: int = 12) -> list[str]:
+def pick_child_sitemaps(locs: list[str], brief: dict, limit: int = 40) -> list[str]:
+    """The child sitemaps to read. Up to 40, fetched at once in the background research (Toolstation's 31 take about
+    6 s): a sitemap named by number ("category/17.xml") can't be judged by its name, and the one holding the guides
+    ("information.xml") once scored nothing, so every related guide and product was missed. Content sitemaps first."""
     explicit = brief.get("sitemaps")
     if explicit:
         return explicit
     if len(locs) <= limit:
         return locs
-    path = urlparse(brief["page_url"]).path.strip("/")
+    path = urlparse(brief.get("page_url") or "").path.strip("/")
     tokens = [t for t in re.split(r"[/\-_]", path) if len(t) > 2]
+    tokens += [t for t in re.findall(r"[a-z]{4,}", (brief.get("target_query") or "").lower())]
     seg = path.split("/")[0] if path else ""
     scored = []
     for loc in locs:
@@ -248,7 +294,9 @@ def pick_child_sitemaps(locs: list[str], brief: dict, limit: int = 12) -> list[s
         score += sum(1 for t in tokens if t in name)
         if re.search(r"(^|/)(page|pages)[-_]?sitemap|sitemap[-_]pages", name):
             score += 3
-        if re.search(r"(post|blog|article|news|guide|learn|help|product|collection|categor|service)", name):
+        if re.search(r"(post|blog|article|news|guide|learn|help|advice|information|info|resource|knowledge|how-?to)", name):
+            score += 5  # where a site keeps its guides: what a guide links to
+        if re.search(r"(product|collection|categor|service)", name):
             score += 2
         scored.append((score, loc))
     scored.sort(key=lambda x: -x[0])
@@ -567,8 +615,8 @@ def prep(brief_path: str, refresh: bool = False, quiet: bool = False, timing: bo
     # the client's own pages on this topic: same-topic pages (cannibalisation), related guides, next-step pages
     rel = related(clean_internal(sm_urls, brief.get("locale") or "en-GB"), brief["target_query"],
                   brief.get("synonyms"), exclude=page_url)
-    # (a "site:client query" Google search used to add to the sitemap match; it is off under the 3-credit cap, where
-    # it raced the main search for a credit: the sitemap and the client's link map find its pages for free)
+    link_map["client_candidates"] = rel.pop("candidates", [])  # re-ranked by the topic's entities in plan.py
+    # (the "site:client query" Google search runs after the research waves, when a credit is left: client_site_search)
     offered = list(dict.fromkeys(rel["same_topic"] + rel["guides"] + rel["commercial"]))
     # one round for every client page this step reads (related pages, and the pages the offer model reads), short
     # limits and no retry: they help the page, none is worth waiting on (sequential rounds of 12 s with a retry made

@@ -24,6 +24,24 @@ STOP = set("a an the and or of to in on for with by from at as is are be your my
 QWORD = re.compile(r"^(how|what|why|when|where|which|who|can|could|should|would|will|do|does|did|is|are|was|were|"
                    r"has|have|may|might|must)\b", re.I)
 COMMERCIAL = {"service", "product", "category", "location", "home", "company"}
+# A ranking page's furniture, not its topic: never a heading on ours ("Special offers", "Recent posts", "Related
+# sinks & taps articles" came through from the competitor outlines on "how to unblock a sink")
+BOILER = re.compile(
+    r"(?i)^(special offers?|offers?|deals?|sale|recent (posts|articles)|latest (news|posts|articles)|popular posts|"
+    r"related (\w+\s*(&|and)?\s*)*(articles|posts|guides|products|reading|content)|you (may|might) also like|"
+    r"more (articles|guides|posts|from)|read more|further reading|share (this|on)|follow us|subscribe|newsletter|"
+    r"sign up|contact( us)?|get in touch|about (us|the author)|author|comments?|leave a (reply|comment)|reviews?|"
+    r"testimonials?|categories|tags|archives?|table of contents|contents|in this (article|guide|post)|"
+    r"related searches|people also ask|shop (now|the range|all)|our (services|products|range)|why choose us|"
+    r"disclaimer|sources|references|faqs?|frequently asked questions|video|watch( the video)?|summary|conclusion|"
+    r"introduction|overview|final thoughts|key takeaways)\b")
+
+
+def boiler(title: str) -> bool:
+    """The whole heading is furniture ("Reviews" is; "Reviews of drain unblockers" is a topic)."""
+    s = (title or "").strip(" :?!.-–—")
+    m = BOILER.match(s)
+    return bool(m and m.end() == len(s))
 
 
 def words(s: str) -> set[str]:
@@ -53,6 +71,25 @@ def is_question(q: str) -> bool:
     return q.strip().endswith("?") or bool(QWORD.match(q.strip()))
 
 
+def is_step(t: str) -> bool:
+    """An instruction, not a topic: three or more words starting with a verb ("Seal the overflow", "Clear remaining
+    residues with water"); "Wire hanger" and "Hot water" are topics."""
+    ws = t.strip().split()
+    if len(ws) < 3 or is_question(t):
+        return False
+    if ws[0].lower() in ("clear", "clean", "empty", "dry", "open", "close", "warm", "level", "smooth", "free", "loosen",
+                         "tighten", "flush", "rinse", "repeat", "test"):
+        return True  # instruction verbs a tagger reads as adjectives or nouns
+    try:
+        from .nlp import _nlp
+        nlp = _nlp()
+        own = nlp(t)[0].tag_
+        # a line-initial imperative is often tagged as a noun ("Plunge the sink"); an adjective never is a step
+        return own in ("VB", "VBP") or (own in ("NN", "NNP") and nlp(f"you {ws[0].lower()} it")[1].tag_ in ("VB", "VBP"))
+    except Exception:
+        return False
+
+
 def build(rd: Path) -> dict:
     rd = Path(rd)
     sheet = C.load_json(rd / "fact_sheet.json") or {}
@@ -70,6 +107,25 @@ def build(rd: Path) -> dict:
 
     def own(s):  # a heading's own words: the topic's words are in every heading and say nothing
         return words(s) - main
+
+    # the topic's entities (what the ranking pages are about): a heading only one competitor uses must be built
+    # from them, or it is that site's joke or slogan ("What better solution … than some fizzy stuff to drink?")
+    kg = C.load_json(rd / "research" / "semantic_graph.json") or {}
+    ent_names = [e if isinstance(e, str) else e.get("entity", "") for e in kg.get("must_cover_entities") or []]
+    ent_names += [e.get("name") or "" for e in ((kg.get("graph") or {}).get("entities") or [])[:60]]
+    ew = set().union(*(words(e) for e in ent_names if e)) | main
+
+    def entity_based(t: str) -> bool:
+        from .clientpages import _shared
+        w = words(re.sub(r"['’]s\b", " ", t))  # "Plumber's snake": two words, not one
+        return bool(w) and len(_shared(w, ew)) / len(w) >= 0.3  # word forms count: "painting" is "paint"
+
+    def opposite(question: str, title: str) -> bool:
+        """"…without a plunger?" is not the title for a section on using a plunger."""
+        m = re.search(r"(?i)\b(without|instead of|no|not|never|avoid|alternatives? to)\s+(?:an?\s+|the\s+|using\s+)?(\w+)",
+                      question)
+        return bool(m and m.group(2).lower()[:5] in title.lower() and not re.search(
+            rf"(?i)\b{re.escape(m.group(1))}\b", title))
 
     heads: list[dict] = []  # {"title", "level", "covers": [...], "questions": [...], "kind", "parent"}
 
@@ -94,8 +150,11 @@ def build(rd: Path) -> dict:
     for s in out.get("sections", []):
         qs = [q for q in s.get("questions", []) if usable(q["q"])]
         h2q = [q for q in qs if q.get("decision") == "h2" and is_question(q["q"])]
-        title = h2q[0]["q"] if h2q else s["title"]
-        if foreign(title, home_geo, home_cur):
+        # the section takes a searcher's question as its title only when the question means what the section says
+        fit = [q for q in h2q if not opposite(q["q"], s["title"])]
+        h2q = fit + [q for q in h2q if q not in fit]  # an opposite question becomes its own H2 below
+        title = fit[0]["q"] if fit else s["title"]
+        if foreign(title, home_geo, home_cur) or boiler(title):
             continue
         sec = {"title": sentence_case(title), "level": 2, "covers": [s["id"]], "questions": [], "kind": "topic",
                "sites": len(s.get("covered_by") or []), "subs": []}
@@ -106,7 +165,7 @@ def build(rd: Path) -> dict:
         else:
             heads.append(sec)
         # a searcher question that deserves its own heading gets one: every further H2-routed question is an H2
-        for q in h2q[1:]:
+        for q in (h2q[1:] if fit else h2q):
             if not find_dup(q["q"]):
                 heads.append({"title": sentence_case(q["q"]), "level": 2, "covers": [s["id"]], "questions": [],
                               "kind": "question", "sites": q.get("competitors", 0), "subs": []})
@@ -119,33 +178,56 @@ def build(rd: Path) -> dict:
                                         "kind": "question", "sites": q.get("competitors", 0), "subs": []})
             else:
                 sec["questions"].append(q["q"])  # a search phrasing: answered inside the section in its words
+        flipped = None  # steps that contradict the section's title ("Plunge the sink" under "…without a plunger?")
         for ss in s.get("subsections", []):
-            if foreign(ss["title"], home_geo, home_cur) or find_dup(ss["title"], [sec] + sec["subs"]):
+            if foreign(ss["title"], home_geo, home_cur) or boiler(ss["title"]) or find_dup(ss["title"], [sec] + sec["subs"]):
                 continue
-            sec["subs"].append({"title": sentence_case(ss["title"]), "level": 3, "covers": [ss["id"]], "questions":
-                                [q["q"] for q in ss.get("questions", []) if usable(q["q"])], "kind": "topic",
-                                "sites": len(ss.get("covered_by") or []), "subs": []})
+            sub = {"title": sentence_case(ss["title"]), "level": 3, "covers": [ss["id"]], "questions":
+                   [q["q"] for q in ss.get("questions", []) if usable(q["q"])], "kind": "topic",
+                   "sites": len(ss.get("covered_by") or []), "subs": []}
+            if opposite(sec["title"], ss["title"]):
+                if flipped is None:
+                    flip_title = re.sub(r"(?i)\b(without|instead of)\s+", "with ", sec["title"])
+                    flip_title = re.sub(r"(?i)\b(no|not|never|avoid)\s+", "", flip_title)
+                    flipped = find_dup(flip_title) or {"title": sentence_case(flip_title), "level": 2, "covers": [s["id"]],
+                                                       "questions": [], "kind": "topic", "sites": sec.get("sites", 0),
+                                                       "subs": []}
+                    if flipped not in heads:
+                        heads.insert(heads.index(sec) if sec in heads else len(heads), flipped)
+                flipped["subs"].append(sub)
+            else:
+                sec["subs"].append(sub)
 
     # 2. what only one ranking page covers is still covered: under the heading it belongs to, or as its own
-    def place(title: str, kind: str):
-        if foreign(title, home_geo, home_cur) or find_dup(title) or any(find_dup(title, h["subs"]) for h in heads):
+    def place(title: str, kind: str, single_site: bool = False):
+        if foreign(title, home_geo, home_cur) or boiler(title) or find_dup(title) or any(find_dup(title, h["subs"]) for h in heads):
             return
+        if single_site and not entity_based(title):
+            return  # one site's slogan or joke, not the topic
         t = own(title) or words(title)
         best = max(heads, key=lambda h: jac(t, own(h["title"]) | set().union(*(own(x["title"]) for x in h["subs"])))
                    if h["subs"] else jac(t, own(h["title"])), default=None)
         score = jac(t, own(best["title"])) if best else 0
         item = {"title": sentence_case(title), "level": 3, "covers": [], "questions": [], "kind": kind, "sites": 1,
                 "subs": []}
+        # a bare method or tool name ("Plumber's snake", "Coat hanger") is one of the options under the section that
+        # lists the methods, not a section of its own
+        methods = [h for h in heads if re.search(r"(?i)\b(methods?|ways?|options?|types?|tools?|alternatives?|kinds?)\b",
+                                                 h["title"])]
+        bare = len(title.split()) <= 4 and not is_question(title) and not re.match(r"(?i)(how|why|when|what)\b", title)
         if best and score >= 0.25:
             best["subs"].append(item)
+        elif bare and methods:
+            max(methods, key=lambda h: len(h["subs"]))["subs"].append(item)
         else:
             item["level"] = 2
             heads.append(item)
     for a in out.get("single_site_angles", []):
         if len(re.findall(r"[A-Za-z]{3,}", a)) >= 2:
-            place(a, "angle")
+            place(a, "angle", single_site=True)
     variants = []
-    for q in out.get("single_site_questions", []) + [{"q": x["q"]} for x in out.get("other_searches", [])]:
+    for q in [dict(x, single=True) for x in out.get("single_site_questions", [])] + \
+            [{"q": x["q"]} for x in out.get("other_searches", [])]:
         text = q["q"]
         if not usable(text):
             continue
@@ -155,7 +237,7 @@ def build(rd: Path) -> dict:
             variants.append(text)
             continue
         if extra:
-            place(text, "question")
+            place(text, "question", single_site=bool(q.get("single")))
 
     # order: the ranking pages' own order (what Google already rewards); a question only searchers ask sits right
     # after the section it belongs to instead of in a block of questions
@@ -177,6 +259,14 @@ def build(rd: Path) -> dict:
         heads.append({"title": f"Get started with {client}", "level": 2, "covers": ["page-job"], "questions": [],
                       "kind": "cta", "sites": 0, "subs": [],
                       "note": "the next step: " + (f"\"{ctas[0]['text']}\" → {ctas[0]['url']}" if ctas else "the client's page")})
+
+    # a ranking page's numbered steps arrive as its H3s ("Seal the overflow", "Plunge the sink"): two or more
+    # instructions under one heading are that section's numbered list, not headings
+    for h in heads:
+        steps = [x for x in h["subs"] if is_step(x["title"])]
+        if len(steps) >= 2:
+            h["steps"] = [x["title"] for x in steps]
+            h["subs"] = [x for x in h["subs"] if x not in steps]
 
     # 4. facts for each heading: the points page one makes, the authority facts, the client's own
     facts = [f for f in sheet.get("facts", []) if f.get("status") in ("verified", "captured", "operator", "serp")]
@@ -224,8 +314,29 @@ def build(rd: Path) -> dict:
     # the author's view: 2-3 first-person passages in the top and middle of the page, where the reader decides
     mark_views(heads, byid)
 
-    # 5. internal links: each client page goes to the heading its title fits
+    # 5. internal links: each client page goes to the heading its title fits. URL words alone can't tell a leaking
+    # tap's washers from a gas-leak detector, but the topic's entities can: the client's candidate pages are
+    # re-ranked by the entities the ranking pages use (washer, cartridge, valve; plunger, drain, unblocker)
     rel = lm.get("client_related") or {}
+    cands = lm.get("client_candidates") or []
+    if cands:
+        from .clientpages import COMMERCIAL as SHOP_URL, slug_words, _shared
+        from urllib.parse import urlparse
+        kg = C.load_json(rd / "research" / "semantic_graph.json") or {}
+        ents = [e if isinstance(e, str) else e.get("entity", "") for e in kg.get("must_cover_entities") or []]
+        ents += [e.get("name") or "" for e in ((kg.get("graph") or {}).get("entities") or [])[:40]]
+        ew = set().union(*(words(e) for e in ents if e)) | main
+        scored = sorted(((len(_shared(slug_words(u), ew)), u) for u in cands), key=lambda x: -x[0])
+        best_c = [u for s, u in scored if s >= 2 and SHOP_URL.search(urlparse(u).path + "/")][:4]
+        best_g = [u for s, u in scored if s >= 2 and not SHOP_URL.search(urlparse(u).path + "/")][:5]
+        if best_c or best_g:
+            rel = {**rel, "commercial": list(dict.fromkeys(best_c + (rel.get("commercial") or [])))[:6],
+                   "guides": list(dict.fromkeys((rel.get("guides") or []) + best_g))[:8]}
+            with C.file_lock(rd / "link_map.json"):  # the check allows exactly the pages the plan offers
+                lm2 = C.load_json(rd / "link_map.json") or {}
+                lm2["client_related"] = {**(lm2.get("client_related") or {}), **rel}
+                lm2["internal"] = list(dict.fromkeys((lm2.get("internal") or []) + best_c + best_g))
+                C.save_json(rd / "link_map.json", lm2)
     titles = lm.get("client_titles") or {}
     targets = list(dict.fromkeys((rel.get("commercial") or [])[:4] + (rel.get("guides") or [])[:5]
                                  + [c["url"] for c in ctas[:2]]))
@@ -317,6 +428,14 @@ def render(plan: dict, facts_by_id: dict) -> list[str]:
     """The plan as the writer reads it."""
     L = [f"H1: {plan['h1']}",
          f"Opening (no heading, about {plan['intro_words']} words): answer the main query in the first two sentences."]
+    # each outside source is linked once on the page: writers draft their parts at the same time and can't see
+    # each other's links, so the plan says which heading links it (the first in page order); the others name it
+    link_at: dict = {}
+    for h in plan["headings"]:
+        for i in h.get("gain", []) + ([h["quote"]] if h.get("quote") else []):
+            u = (facts_by_id.get(i) or {}).get("source_url")
+            if u:
+                link_at.setdefault(u, h["title"])
     if plan.get("variants"):
         L.append("  Variants of the main query (answer each in one comparison table or list near the top; a row only "
                  "where a fact carries it): " + "; ".join(f"\"{v}\"" for v in plan["variants"][:10]))
@@ -333,12 +452,20 @@ def render(plan: dict, facts_by_id: dict) -> list[str]:
                 L.append("   also answer, in these words: " + "; ".join(f"\"{q}\"" for q in h["questions"][:6]))
             for s in h["subs"]:
                 L.append(f"   ### {s['title']}" + (f" — also: " + "; ".join(s["questions"][:3]) if s["questions"] else ""))
+            if h.get("steps"):
+                L.append("   steps (a numbered list in this section, not headings): " + "; ".join(h["steps"]))
             plain = [i for i in h.get("facts", []) if not str(i).startswith("gain:")]
             if plain:
                 L.append("   facts: " + ", ".join(f"`{i}`" for i in plain))
             if h.get("gain"):
-                L.append("   beyond page one: " + ", ".join(f"`{i}`" for i in h["gain"])
-                         + " — use each here, crediting who says it, and link it")
+                bits = []
+                for i in h["gain"]:
+                    u = (facts_by_id.get(i) or {}).get("source_url")
+                    first = link_at.get(u) == h["title"]
+                    bits.append(f"`{i}`" + ("" if first or not u else f" (name the source only: it is linked under "
+                                                                         f"\"{link_at.get(u)}\")"))
+                L.append("   beyond page one: " + ", ".join(bits) + " — use each here, crediting who says it; link a "
+                         "source here only where no other heading is named for it")
             if h.get("quote"):
                 L.append(f"   quote: `{h['quote']}` — its exact words (section 3) in quotation marks, the source named "
                          "and linked in the same sentence")
