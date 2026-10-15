@@ -3,7 +3,8 @@
 Google has already chosen these pages for this query in this market, so a point they make is validated evidence:
 the writer may state it (in their own words) without a separate research trip, and must cover it. The writer's
 own knowledge can still reject a point that is plainly wrong. Where ranking pages contradict each other on the
-same point, the higher-ranked page wins and the others are kept as alternatives. A verified authority fact on the
+same point, the figure most ranking sites state wins (rank only breaks a tie) and the others are kept as
+alternatives that are never used. A verified authority fact on the
 same point beats any competitor. Everything here comes from text already rendered by competitor_scrape: no
 network call, no model call.
 """
@@ -129,6 +130,14 @@ def run(ctx):
     for t in sem.get("heading_topics") or []:
         topic |= toks(t.get("topic", ""))
 
+    from seolib.graph import foreign as _foreign, market_of
+    hgeo, hcur = market_of(ctx.brief.get("locale") or "en-GB")
+
+    def foreign_units(s):
+        if hgeo != "geo:us" and re.search(r"\b\d{2,3}\s?(°\s?)?F\b", s):
+            return True  # "50 F" with its degree sign lost in rendering
+        return _foreign(s, hgeo, hcur)
+
     def rank(p):  # ranked organic pages first; PAA/related answer sources after page one
         return p["position"] if p.get("position") else 10 + (2 if p.get("source_role") == "paa_source" else 4)
 
@@ -151,6 +160,8 @@ def run(ctx):
                 where = places(s) - {home}
                 if where:
                     continue  # names another country's body or rule ("the Australian Government…"): not this market's fact
+                if foreign_units(s):
+                    continue  # another market's currency or units ("between 50 F and 85 F" on a UK page)
                 tk = toks(s)
                 rel = len(tk & topic)
                 figs = figures(s)
@@ -191,10 +202,28 @@ def run(ctx):
     total = len({p["domain"] for p in pages})
     out, conflicts, overridden = [], 0, 0
     for k in clusters:
-        lead = k["lead"]  # the highest-ranked statement of this point
+        # Majority decides a disagreement: the figure most distinct ranking sites state is the fact (7 sites against
+        # 3), because one site's ranking rests on many other factors. Rank only breaks a tie. Statements without a
+        # figure agree with every version and don't vote.
+        groups = []
+        for m in k["members"]:
+            if not m["figs"]:
+                continue
+            g = next((g for g in groups if not clash(g[0]["figs"], m["figs"])), None)
+            if g is None:
+                groups.append([m])
+            else:
+                g.append(m)
+        if len(groups) > 1:
+            win = max(groups, key=lambda g: (len({m["domain"] for m in g}), -min(m["rank"] for m in g)))
+            lead = min(win, key=lambda m: m["rank"])
+            k["votes"] = {"won": len({m["domain"] for m in win}),
+                          "lost": sorted((len({m["domain"] for m in g}) for g in groups if g is not win), reverse=True)}
+        else:
+            lead = k["lead"]  # no disagreement: the highest-ranked statement of this point
         alts, also = [], []
-        for m in k["members"][1:]:
-            if m["domain"] == lead["domain"] or m["s"] == lead["s"]:
+        for m in k["members"]:
+            if m is lead or m["domain"] == lead["domain"] or m["s"] == lead["s"]:
                 continue
             if clash(lead["figs"], m["figs"]) and same_case(lead["s"], m["s"]):
                 if m["s"] not in [a["sentence"] for a in alts]:
@@ -226,9 +255,11 @@ def run(ctx):
     for i, (score, k, lead, alts, note, also) in enumerate(picked, 1):
         n = len(k["domains"])
         where = f"\"{lead['heading'][:70]}\" on " if lead["heading"] else ""
+        v = k.get("votes")
         claim = (f"{where}{lead['domain']} (rank {lead['rank']}); {n} of {total} ranking sites make this point"
-                 + (f"; ranking pages disagree, the higher-ranked page wins over: "
-                    + "; ".join(f"rank {a['rank']} {a['domain']}" for a in alts[:3]) if alts else ""))
+                 + (f"; ranking sites disagree: this figure is stated by {v['won']} site(s) against "
+                    + ", ".join(str(x) for x in v["lost"]) + " (the majority wins; rank only breaks a tie); not: "
+                    + "; ".join(f"rank {a['rank']} {a['domain']}" for a in alts[:3]) if alts and v else ""))
         f = {"id": f"serp:{i}", "claim": claim, "value": lead["s"], "status": "serp_overridden" if note else "serp",
              "basis": "serp_consensus" if n >= 2 else "serp_single", "verified": not note, "source_url": lead["url"],
              "rank": lead["rank"], "domains": sorted(k["domains"]), "consensus": n,
@@ -263,7 +294,7 @@ def run(ctx):
         C.save_json(ctx.rd / "fact_sheet.json", sheet)
     decisions = [f"SERP-validated facts: {len(facts)} points from {total} page-one sites"
                  f" ({sum(1 for f in facts if f['consensus'] >= 2)} made by 2+ sites); {conflicts} contradictions resolved"
-                 " in favour of the higher-ranked page" + (f"; {overridden} overridden by an authority fact" if overridden else "")]
+                 " by majority of ranking sites (rank breaks ties)" + (f"; {overridden} overridden by an authority fact" if overridden else "")]
     return {"facts_added": len(facts), "conflicts": conflicts, "overridden": overridden, "decisions": decisions,
             "summary": f"{len(facts)} SERP-validated points ({sum(1 for f in facts if f['consensus'] >= 2)} consensus), "
-                       f"{conflicts} rank-resolved conflicts, {overridden} authority overrides"}
+                       f"{conflicts} conflicts resolved by majority, {overridden} authority overrides"}

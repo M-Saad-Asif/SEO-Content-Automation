@@ -115,6 +115,19 @@ class file_lock:
             return False
         if pid and pid != os.getpid():
             return not _pid_alive(pid)
+        # our own process id, yet this process doesn't hold it (the caller holds the per-path thread lock and has no
+        # depth recorded): an earlier release could not delete the file because Windows briefly kept it open
+        # (OneDrive sync, an antivirus scan). It is a leftover, not a live owner.
+        return bool(pid) and not file_lock._held.get(self.key)
+
+    def _remove(self) -> bool:
+        """Delete the lock file, retrying while Windows briefly keeps it open (sync clients, scanners)."""
+        for attempt in range(8):
+            try:
+                self.lock.unlink(missing_ok=True)
+                return True
+            except PermissionError:
+                time.sleep(0.01 * 2 ** attempt)
         return False
 
     def __enter__(self):
@@ -134,9 +147,8 @@ class file_lock:
                         os.close(fd)
                     file_lock._held[self.key] = 1
                     return self
-                except FileExistsError:
-                    if self._stale():
-                        self.lock.unlink(missing_ok=True)
+                except (FileExistsError, PermissionError):  # PermissionError: the old file is still being deleted
+                    if self._stale() and self._remove():
                         continue
                     if time.monotonic() >= deadline:
                         raise TimeoutError(f"Timed out waiting for {self.lock}; its live owner was not interrupted")
@@ -152,7 +164,7 @@ class file_lock:
                 file_lock._held[self.key] = depth
                 return
             file_lock._held.pop(self.key, None)
-            self.lock.unlink(missing_ok=True)
+            self._remove()  # if Windows still holds it, the next owner in this process sees it as a leftover
         finally:
             self.local.release()
 

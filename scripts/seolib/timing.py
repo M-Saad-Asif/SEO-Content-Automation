@@ -11,10 +11,9 @@ from pathlib import Path
 
 from . import common as C
 
-BUDGET = {"prep": 45, "research": 360, "draft": 120, "lint": 5, "fix": 40, "validate": 10, "total": 900}
-BUDGET_FAST = {"prep": 60, "draft": 180, "lint": 5, "fix": 60, "validate": 15, "total": 300}
-BUDGET_DEEP = {"prep": 90, "research": 900, "expert": 300, "outline": 60, "draft": 240,
-               "lint": 5, "fix": 60, "validate": 15, "total": 2100}
+# one mode, one budget: research scripts and the plan in under a minute, the parts drafted at the same time, one
+# combined fix pass, five minutes in all
+BUDGET = {"prep": 45, "draft": 150, "lint": 5, "fix": 60, "validate": 15, "total": 300}
 
 
 def mark(rd: Path, step: str, ev: str, fresh: bool = False) -> None:
@@ -111,7 +110,7 @@ def summarise(events: list[dict]) -> dict:
 
 
 def table(summary: dict, mode: str = "quick") -> str:
-    budget = BUDGET_DEEP if mode == "deep" else BUDGET_FAST if mode == "fast" else BUDGET
+    budget = BUDGET
     over = [k for k, v in summary.items() if k in budget and isinstance(v, (int, float)) and v > budget[k]]
     summary = {**summary, "over_budget": over}
     rows = [f"| Step ({mode} mode) | Seconds | Budget |", "|---|---:|---:|"]

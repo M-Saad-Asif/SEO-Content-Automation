@@ -41,7 +41,7 @@ class Ctx:
         self.credits = 0
 
     def deep(self) -> bool:
-        return self.mode in ("deep", "fast")  # fast reads as widely as deep; only the agent stages differ
+        return True  # one mode: every run reads as widely as the old deep mode did
 
     @property
     def task(self) -> str:
@@ -67,7 +67,7 @@ class Ctx:
 
 
 def applies(m: dict, brief: dict, mode: str) -> bool:
-    if m.get("kind") != "script" or ("deep" if mode == "fast" else mode) not in m.get("modes", ["deep", "quick"]):
+    if m.get("kind") != "script" or "deep" not in m.get("modes", ["deep", "quick"]):
         return False
     w = m.get("when") or {}
     return not w.get("task") or (brief.get("task") or "new") in ([w["task"]] if isinstance(w["task"], str) else w["task"])
@@ -91,7 +91,7 @@ def run_research(brief_path: str, mode: str = "deep", refresh: bool = False) -> 
     from .prep import load_brief, run_dir
     from .timing import mark
     brief = load_brief(brief_path)
-    mode = mode or brief.get("research_mode") or "fast"
+    mode = "deep"  # one mode: every research plugin, every run
     rd = run_dir(brief)
     rd.mkdir(parents=True, exist_ok=True)
     mark(rd, "prep", "start", fresh=True)

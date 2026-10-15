@@ -4,41 +4,27 @@
 
 You are the writer. Plugins (in `plugins/`) do the research and the checks. Run every command from the repository root, or call `scripts/seo.py` by its full path from anywhere. Use `python`, or `python3` where `python` is not on PATH.
 
-**Input:** a brief path, for example `briefs/<page>.yaml`. **Mode:** `fast` (default, about five minutes end to end), `deep` (add `--mode deep` when the user asks for the full agent review) or `quick`.
+**Input:** a brief path, for example `briefs/<page>.yaml`. There is one mode: every run does everything, in about five minutes.
 
-## The fast flow (default)
+## The flow (every run)
 
 | # | Step | Who | Target |
 |---|---|---|---|
-| 1 | Research: all script plugins, including `serp_facts` (the page-one fact table) | script | ≤ 60 s |
-| 2 | Draft from `write_brief.md` (coverage checklist, information-gain questions, facts, internal links) | writer | ≤ 3 min |
-| 3 | One combined check: lint blocks, claims the facts don't carry (review CHECKs), likely-missing coverage, warnings | script → writer | ≤ 60 s |
-| 4 | Validate (re-lint, live links), eval | script | ≤ 15 s |
+| 1 | Research: every script plugin, including `serp_facts` (the page-one fact table, disagreements settled by majority) | script | ≤ 45 s |
+| 2 | The page plan (`seolib/plan.py`): every heading and question the top 10 cover, merged, one H2 per searcher question, facts and links per heading, split into parts; written into `write_brief.md` | script | seconds |
+| 3 | Draft: the plan's parts written at the same time by parallel writers (one writer in tools that can't run agents in parallel); `next` joins them | writers | ≤ 2½ min |
+| 4 | One combined check: planned headings missing, lint blocks, claims no fact carries | script → writer | ≤ 60 s, at most two rounds |
+| 5 | Validate (re-lint, live links), eval | script | ≤ 15 s |
 
-Evidence policy (RULES 1.25): the points page-one pages make are validated (`serp` facts) and need no research trip; the higher-ranked page wins a contradiction; a verified authority fact beats any competitor; the writer's own knowledge may drop a point that is wrong, never invent a number. Every point page one covers is covered (a point one site makes is still validated); People Also Ask and related questions page one leaves unanswered are the information gain. There is no researcher, expert, outline, editor or fact-check agent in this flow: the checks that guard correctness (lint, the claim-to-fact review, coverage, live links) run by script. Use `--mode deep` for YMYL pages that need the full review.
+What used to be separate agent stages is built in. The expert's judgement: the page job, the plan and the authority cautions in the brief. The fact-checker: every figure and claim checked against a fact by script. The internal linker: links planned per heading. So no step waits on another agent. Warnings are logged in the report, not sent back as fix rounds.
 
-The sections below describe the deep flow; in the fast flow only sections 4 (draft, from `write_brief.md`), 5, 6 and 7 apply.
+**Evidence (RULES section 1, rule 25):** page-one points are validated facts. Where ranking sites disagree, the value most of them state is the fact (seven against three); rank only breaks a tie; a verified authority fact beats any competitor. **Coverage:** nothing a top-10 page covers is left out. Every section, every one-site section and every People Also Ask, related and competitor question is a heading in the plan (merged with its duplicates); questions page one leaves unanswered are the information gain.
 
-**Speed rules:**
+**Speed rules:** writers read only `RULES_CARD.md` and the run's `write_brief.md`, write in one go, and stop. No research, rereading or extra files. Never ask the operator anything; decisions are logged in the report.
 
-- Batch independent tool calls in one turn.
-- Don't narrate between steps.
-- Read `RULES.md` once.
-- As the writer, read `RULES.md`, the run's `writer_pack.md`, `research/dossier.md` and `expert_notes.md` (plus `review.md` and `docs/EVAL_RUBRIC.md` in steps 6b and 7b). No old runs, references or JSON files.
-- Never ask the operator anything. Decisions are logged in the report.
+Timing is automatic: the driver stamps each agent task and script check in `timing.json`.
 
-| # | Step | Who | Deep | Quick |
-|---|---|---|---|---|
-| 1 | Research (all script plugins) | script | ≤ 90 s | ≤ 45 s |
-| 2 | Research (deep_research skill) | researcher agent | ≤ 15 min | ≤ 6 min |
-| 2b | Expert review (expert_review skill) | expert agent | ≤ 5 min | skip |
-| 3 | Outline + outline check | you + script | ≤ 60 s | skip |
-| 4 | Draft | you | ≤ 240 s | ≤ 120 s |
-| 5 | Lint | script | ≤ 5 s | ≤ 5 s |
-| 6 | Humanize (targeted fix) | you | ≤ 60 s | ≤ 40 s |
-| 7 | Final verify | script | ≤ 15 s | ≤ 10 s |
-
-Timing is automatic: the driver stamps each agent task and script check in `timing.json`; fact registration has its own nested duration. Old logs without task boundaries report work before the first check together rather than calling all of it drafting. Budgets are diagnostic, not runtime guarantees.
+The numbered sections below are the reference for what each part of the page must do. Sections 2, 2b, 3, 6b, 7a, 7b, 7c and 7d describe the older separate agent stages; their checks now run inside steps 2 to 5 above.
 
 ## 0. Page intake (when the request names a page)
 

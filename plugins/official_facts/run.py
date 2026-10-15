@@ -217,7 +217,7 @@ def run(ctx):
              and ((fetched.get(u) or {}).get("state") == "needs_js" or not (fetched.get(u) or {}).get("blocks"))
              and not u.lower().split("?")[0].endswith(".pdf")]
     if retry and spider.api_key():
-        rendered = spider.scrape_many(retry, concurrency=max(1, min(12, len(retry))), timeout_s=15, attempts=1, refresh=ctx.refresh)
+        rendered = spider.scrape_many(retry, concurrency=max(1, min(12, len(retry))), timeout_s=10, attempts=1, refresh=ctx.refresh)
         for u, r in rendered.items():
             if r.get("state") == "ok":
                 fetched[u] = r

@@ -1,4 +1,4 @@
-"""Offline regressions for the fast flow: page-one facts, rank-resolved contradictions, coverage and information gain."""
+"""Offline regressions for page-one facts (majority-resolved contradictions), coverage and information gain."""
 from __future__ import annotations
 
 import importlib.util
@@ -45,7 +45,7 @@ class SerpFactsTests(unittest.TestCase):
         res = serp_facts.run(ctx)
         return res, [f for f in C.load_json(self.rd / "fact_sheet.json")["facts"] if f["id"].startswith("serp:")]
 
-    def test_higher_ranked_page_wins_a_contradiction(self):
+    def test_rank_breaks_a_tie(self):
         pages = [page(2, "a.example", [["h2", "Pot depth"], ["p", "A strawberry pot should be at least 20 cm deep for the roots."]]),
                  page(6, "b.example", [["h2", "Pot depth"], ["p", "A strawberry pot should be at least 30 cm deep for the roots."]])]
         res, facts = self.run_plugin(pages)
@@ -58,6 +58,25 @@ class SerpFactsTests(unittest.TestCase):
         nums, *_ = allowed_numbers(sheet)
         self.assertIn(20.0, nums)
         self.assertNotIn(30.0, nums)  # the losing value is never usable
+
+    def test_another_markets_units_are_not_facts(self):
+        pages = [page(1, "a.example", [["p", "Strawberry pots do best between 60 F and 80 F, so move the pot into shade in a heatwave."]]),
+                 page(2, "b.example", [["p", "A strawberry pot should be at least 20 cm deep so the roots have room to grow."]])]
+        res, facts = self.run_plugin(pages)
+        self.assertFalse(any("80 F" in f["value"] for f in facts))
+        self.assertTrue(any("20 cm" in f["value"] for f in facts))
+
+    def test_majority_of_sites_wins_over_a_higher_rank(self):
+        say = lambda cm: [["h2", "Pot depth"], ["p", f"A strawberry pot should be at least {cm} cm deep for the roots."]]
+        pages = [page(1, "a.example", say(20))] + [page(r, f"s{r}.example", say(30)) for r in (3, 5, 7)]
+        res, facts = self.run_plugin(pages)
+        winner = next(f for f in facts if f.get("conflicts"))
+        self.assertIn("30 cm", winner["value"])  # 3 sites against 1, though the 20 cm page ranks first
+        self.assertIn("20 cm", winner["conflicts"][0]["sentence"])
+        self.assertIn("3 site(s) against 1", winner["claim"])
+        nums, *_ = allowed_numbers(C.load_json(self.rd / "fact_sheet.json"))
+        self.assertIn(30.0, nums)
+        self.assertNotIn(20.0, nums)
 
     def test_different_measures_are_separate_points_not_a_conflict(self):
         pages = [page(1, "a.example", [["p", "Choose a strawberry pot at least 20 cm deep with good drainage holes."]]),

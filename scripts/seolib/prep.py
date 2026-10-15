@@ -585,8 +585,20 @@ def prep(brief_path: str, refresh: bool = False, quiet: bool = False, timing: bo
     except Exception as e:  # no key or no network: the sitemap match still stands
         print(f"  client site search skipped ({type(e).__name__})")
     offered = list(dict.fromkeys(rel["same_topic"] + rel["guides"] + rel["commercial"]))
+    # one round for every client page this step reads (related pages, and the pages the offer model reads), short
+    # limits and no retry: they help the page, none is worth waiting on (sequential rounds of 12 s with a retry made
+    # this step take a minute on large sites)
+    opages_pre = ([page_url] if page_info.get("exists") else []) + [f"https://{domain}/"] \
+        + rel["same_topic"][:1] + rel["commercial"][:2]
+    async def _both():  # results are keyed by URL, so the two readings of a page run as two calls, side by side
+        import asyncio
+        return await asyncio.gather(
+            C.fetch_many([{"url": u, "kind": "page", "parse": "doc"} for u in offered], refresh, timeout=6, attempts=1),
+            C.fetch_many([{"url": u, "kind": "page", "parse": "html"} for u in dict.fromkeys(opages_pre)], refresh,
+                         timeout=6, attempts=1))
+    pre_res, _offer_res = C.run_async(_both())
     if offered:
-        chk = C.run_async(C.fetch_many([{"url": u, "kind": "page", "parse": "doc"} for u in offered], refresh))
+        chk = {u: pre_res.get(u) or {} for u in offered}
         final = {}
         for u in offered:
             r = chk.get(u) or {}
@@ -605,7 +617,8 @@ def prep(brief_path: str, refresh: bool = False, quiet: bool = False, timing: bo
     link_map["client_related"] = rel
     gpages = rel["guides"][:4] + rel["same_topic"][:1]
     if gpages:
-        gres = C.run_async(C.fetch_many([{"url": u, "kind": "page", "parse": "doc"} for u in gpages], refresh))
+        gres = C.run_async(C.fetch_many([{"url": u, "kind": "page", "parse": "doc"} for u in gpages], refresh,
+                                        timeout=6, attempts=1))
         for i, cp in enumerate(client_passages({u: gres.get(u) or {} for u in gpages}, brief["target_query"],
                                                rich=tuple(rel["same_topic"][:1]), syn=
                                                brief.get("synonyms")), 1):

@@ -182,8 +182,9 @@ def _length_line(rd: Path) -> str:
     b = (C.load_json(rd / "fact_sheet.json") or {}).get("brief", {})
     eff, raw = b.get("word_range_effective"), b.get("word_range")
     if eff:
-        return (f"Length: aim for {eff[0]}–{eff[1]} words. This range (set from the ranking pages) replaces the brief's "
-                f"{raw[0]}–{raw[1]}. Reach it with verified material only: a shorter page beats an invented sentence.")
+        return (f"Length: about {eff[0]}–{eff[1]} words in all (set by the plan: every heading the ranking pages cover, "
+                f"answered; each heading's share is in the plan). Verified material only: a shorter section beats an "
+                f"invented sentence.")
     if raw:
         return f"Length: aim for {raw[0]}–{raw[1]} words, with verified material only."
     return "Length: as long as the verified material needs, no padding."
@@ -251,14 +252,12 @@ def _task(title: str, lines: list[str], brief_path: str, confirm: str | None = N
     print(SEP)
     if not _in_repo():
         print(f"Repository: {C.ROOT.as_posix()} (every relative path below is inside it)")
-    if "role: writer" in title or "role: hostile senior editor" in title:
+    if ("role: writer" in title or "role: hostile senior editor" in title) and "in parallel" not in title:
         print("Claude Code: give this task to the `seo-writer` agent (it runs on Sonnet). Other tools: do it yourself.")
     for ln in lines:
         print(ln)
     print()
-    print(f"Checks (outline check, lint, review sheet, validate, eval) are run by `next`; do not run them yourself, even")
-    print(f"where a WORKFLOW.md section mentions them. At any step you may record a verified fact with:")
-    print(f"  {CMD()} prep {ARG(brief_path)} --add-fact <id> \"<claim>\" \"<exact words>\" <url> --scope \"<who/when>\"")
+    print("Checks (lint, claims against facts, planned headings, validate, eval) are run by `next`; do not run them yourself.")
     if confirm:
         print(f"When the task is complete, run: {CMD()} done {ARG(brief_path)} {confirm}")
     print(f"Then run: {CMD()} next {ARG(brief_path)}")
@@ -276,18 +275,18 @@ def next_step(brief_path: str, mode: str | None = None) -> None:
         print(f"RUNNING: research for \"{brief['target_query']}\" (scripts, about a minute)…")
         from .harness import run_research
         # the scripts' own console notes ("next: write outline.md…") are for manual runs; here `next` decides
-        rd, log = _quiet(run_research, brief_path, mode)
+        rd, log = _quiet(run_research, brief_path, "deep")  # one mode: every research plugin, every run
         (rd / "research_log.txt").write_text(log, encoding="utf-8")
         print(f"Research scripts finished (log: {rel(rd)}/research_log.txt).")
         st = _state(rd)
-        st["mode"] = mode or brief.get("research_mode") or "fast"
+        st["mode"] = "full"
         _save_state(rd, st)
     st = _state(rd)
     _end_agent_stage(rd, st)
     deep = st.get("mode", "deep") == "deep"
     R = rel(rd)
-    if st.get("mode") == "fast":
-        return _next_fast(brief, brief_path, rd, st, R, mode)
+    if st.get("mode") in ("full", "fast") or not st["done"].get("research"):
+        return _next_flow(brief, brief_path, rd, st, R, mode)
 
     # 2. research (agent) ----------------------------------------------------------------------------------------
     if "research" not in st["done"]:
@@ -526,7 +525,7 @@ def next_step(brief_path: str, mode: str | None = None) -> None:
     print("Stop here. Reply with these three paths and nothing else.")
 
 
-FAST_ROUNDS = 2  # fix rounds after the combined first check, before the run stops instead of looping
+FIX_ROUNDS = 2  # fix rounds after the combined first check, before the run stops instead of looping
 
 
 def _review_checks(rd: Path, limit: int = 25) -> list[str]:
@@ -574,37 +573,83 @@ def _coverage_gaps(rd: Path, md: str) -> list[dict]:
     return out
 
 
-def _next_fast(brief: dict, brief_path: str, rd: Path, st: dict, R: str, mode: str | None) -> None:
-    """The fast flow (default): scripts research → one write → one combined check → validate → done.
+def _stitch(rd: Path, plan: dict) -> list[str]:
+    """Join the parts writers drafted at the same time into draft.md. Returns the parts still missing."""
+    parts = plan.get("parts") or []
+    files = {pt["id"]: rd / f"draft_part_{pt['id']}.md" for pt in parts}
+    missing = [k for k, f in files.items() if not f.exists() or not f.read_text(encoding="utf-8").strip()]
+    if missing:
+        return missing
+    import re
+    out = []
+    for k in [pt["id"] for pt in parts]:
+        t = files[k].read_text(encoding="utf-8").strip()
+        if out:  # only part A carries the front matter, the H1 and the opening
+            t = re.sub(r"^---\n.*?\n---\s*", "", t, flags=re.S)
+            t = re.sub(r"^#\s+[^\n]*\n+", "", t)
+        out.append(t)
+    (rd / "draft.md").write_text("\n\n".join(out).rstrip() + "\n", encoding="utf-8")
+    return []
 
-    Facts come from page one (plugins/serp_facts), authorities and the client, so there is no research or
-    fact-check agent; the checks that guard information correctness (lint, the claim-to-fact review, coverage,
-    live links) still run, by script."""
+
+def _next_flow(brief: dict, brief_path: str, rd: Path, st: dict, R: str, mode: str | None) -> None:
+    """The one flow, every run: research scripts and the page plan (seconds) → the writers draft the plan's parts
+    at the same time → one combined check (lint blocks, claims no fact carries, planned headings missing) → at most
+    two fix rounds → validate → done. The expert's, fact-checker's and internal linker's work is built into the plan
+    (facts and links per heading, page job) and into the checks (every figure against a fact, every planned heading
+    on the page), so no stage waits on another agent."""
     import hashlib
     draft, final = rd / "draft.md", rd / "final.md"
+    plan = C.load_json(rd / "plan.json") or {}
     if not draft.exists():
-        from .kgdoc import write_docs
-        from .writebrief import build as write_brief
-        write_docs(rd)
-        write_brief(rd)
+        if not (rd / "write_brief.md").exists() or not plan:
+            from .kgdoc import write_docs
+            from .writebrief import build as write_brief
+            write_docs(rd)
+            write_brief(rd)
+            plan = C.load_json(rd / "plan.json") or {}
+        parts = plan.get("parts") or []
+        if len(parts) > 1:
+            missing = _stitch(rd, plan)
+            if not missing:
+                return next_step(brief_path, mode)
+            each = [f"Run folder: {R}",
+                    f"The plan in {R}/write_brief.md (section 2) is split into parts {', '.join(p['id'] for p in parts)}. "
+                    "Write them at the same time:",
+                    f"- Claude Code: start {len(parts)} `seo-writer` agents in ONE message (they run in parallel), one per "
+                    "part, each given the instructions below with its part letter.",
+                    "- Cursor, Codex, Antigravity and others: run parallel agents if your tool can; otherwise write the parts "
+                    "yourself one after another.",
+                    "",
+                    "Instructions for the writer of part X:",
+                    f"1. Read RULES_CARD.md and {R}/write_brief.md: sections 1, 3 and 4, and part X of section 2. Nothing else.",
+                    f"2. Write {R}/draft_part_X.md with a single write: only part X's headings, in the plan's order (H2s "
+                    "and their H3s, Markdown only). Part A also starts with the front matter (title, meta_description), "
+                    "the H1 and the opening.",
+                    "3. Each heading answers its question in its first one or two sentences; facts in your own words, "
+                    "figures exactly as their notes give them; the links listed under a heading go in that section.",
+                    "4. Stop. No rereading, no research, no other files: the check that follows lists every problem.",
+                    ""]
+            if missing and len(missing) < len(parts):
+                each.append("Still to write: part " + ", part ".join(missing) + " (the others are done).")
+            each.append(_length_line(rd))
+            _task("DRAFT THE PAGE (role: writers, in parallel)", each, brief_path)
+            return
         _task("DRAFT THE PAGE (role: writer)", [
             f"Run folder: {R}",
-            "1. Read RULES.md fully (section 0, the page's job, first).",
-            f"2. Read {R}/write_brief.md. It is your only data file: page job, the coverage checklist (everything page",
-            "   one covers), the information-gain questions, the facts you may state, and the internal links to add.",
-            f"3. Write {R}/draft.md with a single write: front matter (title, meta_description), one H1, Markdown",
-            "   only. The main answer first; every section-1 item covered; every section-2 question answered; facts in",
-            "   your own words (never six or more words in a row from a fact) with numbers exactly as given; 3–6",
-            "   internal links from section 4. No contradictions, no number given twice with different values.",
-            "4. Then stop. Do not reread or re-edit the draft: the check `next` runs straight after lists every",
-            "   problem, and you fix them in one pass then. No research, no other files, no planning notes.",
-            "Write straight away: a fact that doesn't fit is skipped silently, never weighed at length or reported.",
+            f"1. Read RULES_CARD.md and {R}/write_brief.md. Nothing else.",
+            f"2. Write {R}/draft.md with a single write: front matter (title, meta_description), the H1, the opening, then "
+            "every heading of the plan in its order. Markdown only.",
+            "3. Each heading answers its question in its first one or two sentences; facts in your own words, figures "
+            "exactly as their notes give them; the links listed under a heading go in that section.",
+            "4. Stop. No rereading, no research, no other files: the check that follows lists every problem.",
             "",
             _length_line(rd),
         ], brief_path)
         return
     from .lint import lint_text, load_research
     from .timing import mark
+    from .plan import check as plan_check
     sheet = C.load_json(rd / "fact_sheet.json")
     lm = C.load_json(rd / "link_map.json") or {}
     md = draft.read_text(encoding="utf-8")
@@ -615,48 +660,34 @@ def _next_fast(brief: dict, brief_path: str, rd: Path, st: dict, R: str, mode: s
         mark(rd, "lint", "end")
     C.save_json(rd / "lint.json", res)
     blocks = [f for f in res["findings"] if f["severity"] == "block"]
+    gaps = plan_check(rd, md)
     sig = hashlib.sha256(draft.read_bytes()).hexdigest()
-    if st["done"].get("fast_check") and st.get("fast_check_sig") == sig:
-        st["done"].pop("fast_check")  # `next` again before any edit: print the same combined task, don't skip it
-    if not st["done"].get("fast_check"):
-        # one combined pass: every blocking line, every claim the facts don't carry, every coverage item that looks
-        # missing, and the warnings to judge, so the writer edits once instead of once per checker
-        checks = _review_checks(rd)
-        gaps = _coverage_gaps(rd, md)
-        warns = [f for f in res["findings"] if f["severity"] == "warn"]
-        st["done"]["fast_check"] = C.now_iso()
-        st["fast_check_sig"] = sig
+    first = not st["done"].get("check")
+    if blocks or gaps or first:
+        checks = _review_checks(rd) if first else []
+        st["done"]["check"] = st["done"].get("check") or C.now_iso()
         _save_state(rd, st)
-        if blocks or checks or gaps or warns:
-            lines = [f"Fix {R}/draft.md in place, in one pass. Edit only the sentences named here; never rewrite the page.", ""]
-            if blocks:
-                lines += [f"A. {len(blocks)} blocking lint line(s): fix each one.", ""] + _finding_lines(blocks) + [""]
-            if checks:
-                lines += ["B. Claims the facts in write_brief.md don't carry: make the sentence say what its closest fact",
-                          "   says (same number, group, condition and strength), or cut it. A number you worked out from facts",
-                          "   only needs its inputs in the same paragraph.", ""] + checks + [""]
+        if blocks or gaps or checks:
+            if not first and _rounds(rd, st, "check", FIX_ROUNDS, R, brief_path, blocks or gaps):
+                return
+            lines = [f"Fix {R}/draft.md in place, in one pass. Edit only what is named here; never rewrite the page.", ""]
             if gaps:
-                lines += ["C. Coverage items the page may be missing (lexical check): add a short answer where it fits, or",
-                          "   leave it when the page already answers it in other words.", ""]
-                lines += [f"- [{c['id']}] {c['text']}" + (" (information gain)" if c.get("info_gain") else "") for c in gaps[:25]] + [""]
-            if warns:
-                lines += [f"D. {len(warns)} lint warning(s) to judge: fix a sentence when the rule really applies.", ""]
-                lines += _finding_lines(warns, limit=25)
+                lines += [f"A. {len(gaps)} planned heading(s) missing: add each with its answer (write_brief.md section 2 "
+                          "lists its facts).", ""] + [f"- {g}" for g in gaps] + [""]
+            if blocks:
+                lines += [f"B. {len(blocks)} blocking line(s): fix each one.", ""] + _finding_lines(blocks) + [""]
+            if checks:
+                lines += ["C. Claims no fact carries: make the sentence say what its closest fact says (same figure, group, "
+                          "condition and strength), or cut it. A figure you worked out from facts needs its inputs in the "
+                          "same paragraph.", ""] + checks
             _task("FIX THE DRAFT (role: writer)", lines, brief_path)
             return
-    elif blocks:
-        if _rounds(rd, st, "lint", FAST_ROUNDS, R, brief_path, blocks):
-            return
-        _task("FIX LINT BLOCKS (role: writer)", [f"Lint found {len(blocks)} blocking problem(s) in {R}/draft.md. Fix each "
-                                                 "one in place and change nothing else:", ""] + _finding_lines(blocks),
-              brief_path)
-        return
     draft_sig = hashlib.sha256(draft.read_bytes()).hexdigest()
     if not final.exists() or st.get("validated_draft") != draft_sig:
         from .validate import validate
         ok, out = _quiet(validate, str(rd))
         if not ok:
-            if _rounds(rd, st, "validate", FAST_ROUNDS, R, brief_path, out.strip()[-3500:]):
+            if _rounds(rd, st, "validate", FIX_ROUNDS, R, brief_path, out.strip()[-3500:]):
                 return
             _task("FIX VALIDATION (role: writer)", [
                 f"Validation failed. Fix each blocking line below in {R}/draft.md and change nothing else:", "",

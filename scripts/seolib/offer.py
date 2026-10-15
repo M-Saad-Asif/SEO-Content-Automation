@@ -61,7 +61,8 @@ def offer_profile(client: str, domain: str, pages: list[str], title_hint: str = 
     brands = sorted(set(brand_names(home, title_hint) + [client]), key=len, reverse=True)
     bre = "(" + "|".join(re.escape(b) for b in brands if b) + ")"
     own = [re.compile(p.replace("{brand}", bre), re.I) for p in OWN]
-    res = C.run_async(C.fetch_many([{"url": u, "kind": "page", "parse": "html"} for u in pages], refresh)) or {}
+    res = C.run_async(C.fetch_many([{"url": u, "kind": "page", "parse": "html"} for u in pages], refresh,
+                                   timeout=6, attempts=1)) or {}
     banned_l = [b.lower() for b in banned or []]
     offers, ctas, seen, seen_cta, texts = [], [], set(), set(), []
     for rank, u in enumerate(pages):

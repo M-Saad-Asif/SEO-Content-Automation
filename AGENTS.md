@@ -16,16 +16,12 @@ The request is what the user typed: a page address (the page is read first: its 
 
 Never: edit anything under `scripts/`, `plugins/`, `RULES.md`, `WORKFLOW.md`, `clients/` or the brief; open other runs or backup folders; run `seo.py` commands the task did not print; run `done` for a task you have not finished; ask the user anything mid-run.
 
-Use `python3` where `python` is not on PATH. Runs use the fast flow by default (research scripts, one write, one combined check, validate: about five minutes). Add `--mode deep` to `start` or `next` only when the user asks for the full agent review (researcher, expert, editor and fact-checker passes). First-time setup on a machine is one command, `python install.py` (packages, spaCy model, API keys into `.env`, and `/page-seo` installed into every coding agent: Claude Code, Cursor, Codex, Antigravity, Gemini CLI, Windsurf, Copilot). If `doctor` fails on packages or keys, that is the fix.
+Use `python3` where `python` is not on PATH. There is one mode: every run does the whole pipeline (research scripts, the page plan, parallel writers, one combined check, validate) in about five minutes. First-time setup on a machine is one command, `python install.py` (packages, spaCy model, API keys into `.env`, and `/page-seo` installed into every coding agent: Claude Code, Cursor, Codex, Antigravity, Gemini CLI, Windsurf, Copilot). If `doctor` fails on packages or keys, that is the fix.
 
 ## Roles the tasks name
 
-Where the host can start a separate agent, give each task to the agent the task names (Claude Code: `.claude/agents/`); otherwise do it as a separate pass. Pick Sonnet or a stronger model for runs in Cursor, Codex or Antigravity: the writer and fact-checker run on the model you select.
-- researcher: `plugins/deep_research/SKILL.md` (verified, scoped facts and `research/dossier.md`)
-- expert reviewer: `plugins/expert_review/SKILL.md`, two passes: `expert_notes.md` before the outline, and `expert_read.md` after validation (an independent opinion on the finished page, with today's news and the business fit, applied by the editor's pass); no invented experience
-- writer: `RULES.md` + the `WORKFLOW.md` section the task names (Claude Code: `.claude/agents/seo-writer.md`, on Sonnet)
-- fact-checker: `plugins/fact_check/SKILL.md` (`verify.md`; a fresh agent that did not write the page; Claude Code: `.claude/agents/seo-fact-checker.md`)
-- internal linker: `plugins/internal_links/SKILL.md` (the last writing stage: 3–6 contextual links anchored on each target's main term; `internal_links.md`)
+- writers: `RULES_CARD.md` + the run's `write_brief.md`, nothing else. The draft task splits the page plan into parts: start one writer per part at the same time where the host can run agents in parallel (Claude Code: several `seo-writer` agents in one message, on Sonnet); otherwise write the parts in turn. Pick Sonnet or a stronger model in Cursor, Codex or Antigravity.
+- fixes: one combined fix task after the check (planned headings missing, blocking lines, claims no fact carries), edited in place.
 
 E-E-A-T inputs only a person can give go in the client profile: `author:` (a real name and credentials for the byline) and `experience:` (genuine first-hand notes, case data, what the client's staff see). The pipeline never invents either.
 

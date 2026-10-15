@@ -179,6 +179,10 @@ def foreign(sentence: str, home_geo: str, home_cur: str) -> bool:
         return True
     if home_geo != "geo:us" and re.search(r"°\s?F\b|\bfahrenheit\b|\bgallons?\b|\bquarts?\b", sentence, re.I):
         return True
+    # "in 90 degree weather" outside the US: air temperatures of 50+ degrees are Fahrenheit
+    if home_geo != "geo:us" and re.search(r"\b([5-9]\d|1[0-2]\d)[\s-]*degrees?\b(?![\s-]*(c\b|celsius|centigrade))",
+                                          sentence, re.I):
+        return True
     return bool(places(sentence) - {home_geo, "geo:eu"})
 
 
