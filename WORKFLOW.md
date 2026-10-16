@@ -139,7 +139,7 @@ An independent senior practitioner (Claude Code: the `seo-expert` agent; elsewhe
 
 ## 7b. Editor's pass (one turn, after the first PASS)
 
-Read `docs/EVAL_RUBRIC.md` and read `final.md` once as a hostile senior editor who has the top pages open beside it. Write `runs/<run>/editor.md` with:
+Read `docs/EVAL_RUBRIC.md` and read `final.md` once as an independent senior editor who has the top pages open beside it (fair, not fault-finding: list what is really wrong, and say so when a part is good). Write `runs/<run>/editor.md` with:
 
 - for each rubric criterion, the points you would deduct and the quoted line that costs them
 - every sentence that could sit on any page, every sentence whose only job is to carry a link or announce the next one, and every section that ends the same way as another

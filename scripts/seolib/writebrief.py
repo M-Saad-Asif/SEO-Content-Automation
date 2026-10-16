@@ -72,8 +72,8 @@ def build(rd: Path) -> Path:
     job = [x for x in page_job(sheet) if x.strip() and not x.startswith("## ")]
     W += ["", "## 1. Page job"] + [_cut(x, 380) for x in job[:12]]
 
-    W += ["", "## 2. The plan: write every heading below, in this order (rephrase a heading only to read naturally; "
-          "keep its key words)",
+    W += ["", "## 2. The plan: write every heading below, in this order (a heading that is not natural English, often "
+          "a search phrase, is rewritten as a person would ask it; keep its key words)",
           "Each H2 answers its question in its first one or two sentences, then the detail. H3s sit under their H2. "
           "\"also answer\" lines are answered inside that section in those words. A fact id listed under a heading is "
           "the material for that heading only: other parts are written at the same time, so a fact listed under "

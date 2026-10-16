@@ -360,7 +360,7 @@ def _task(title: str, lines: list[str], brief_path: str, confirm: str | None = N
     print(SEP)
     if not _in_repo():
         print(f"Repository: {C.ROOT.as_posix()} (every relative path below is inside it)")
-    if ("role: writer" in title or "role: hostile senior editor" in title) and "in parallel" not in title:
+    if ("role: writer" in title or "role: independent senior editor" in title) and "in parallel" not in title:
         print("Claude Code: give this task to the `seo-writer` agent (it runs on Sonnet). Other tools: do it yourself.")
     for ln in lines:
         print(ln)
@@ -588,7 +588,7 @@ def next_step(brief_path: str, mode: str | None = None) -> None:
     if "editor" not in st["done"]:
         from .review import review
         _quiet(review, rd)  # the sheet beside the editor must describe the page as it is now, not an earlier draft
-        _task("EDITOR'S PASS (role: hostile senior editor)", [
+        _task("EDITOR'S PASS (role: independent senior editor)", [
             f"`next` has just validated the draft: {R}/final.md is current. Follow WORKFLOW.md section 7b exactly:",
             f"1. Read docs/EVAL_RUBRIC.md and {R}/final.md, with {R}/review.md beside it"
             + (f", and the expert's opinion in {R}/expert_read.md." if (rd / "expert_read.md").exists() else "."),
@@ -826,10 +826,29 @@ def _next_flow(brief: dict, brief_path: str, rd: Path, st: dict, R: str, mode: s
             if blocks:
                 lines += [f"B. {len(blocks)} blocking line(s): fix each one.", ""] + _finding_lines(blocks) + [""]
             if checks:
-                lines += ["C. Claims no fact carries: make the sentence say what its closest fact says (same figure, group, "
-                          "condition and strength), or cut it. A figure you worked out from facts needs its inputs in the "
-                          "same paragraph.", ""] + checks
+                lines += ["C. Lines the script could not match to a fact. Most are fine: leave a line that is right (common "
+                          "knowledge, your reasoning, or a fact the script missed). Change one only if it states something "
+                          "no fact supports or misstates its fact (figure, group, condition, strength). A figure you worked "
+                          "out from facts needs its inputs in the same paragraph.", ""] + checks
             _task("FIX THE DRAFT (role: writer)", lines, brief_path)
+            return
+    # the fact-check pass: one sub-agent, only the lines where a mistake would hurt (maths, money, rates, health,
+    # legal, safety), at most 15; most come back OK, and an all-OK answer is a finished check
+    if not st["done"].get("verify"):
+        from .verify import build_fast
+        n = build_fast(rd)
+        if not n:
+            st["done"]["verify"] = C.now_iso()
+            _save_state(rd, st)
+        else:
+            _task("FACT-CHECK THE LINES THAT MATTER (role: fact-checker, one sub-agent)", [
+                f"Run folder: {R}",
+                f"Give this to one `seo-fact-checker` sub-agent (Codex: `seo_fact_checker`; a tool without sub-agents: "
+                f"do it yourself as a fresh pass). It reads plugins/fact_check/SKILL.md, {R}/verify_sheet.md "
+                f"({n} lines) and {R}/draft.md, and writes {R}/verify.md.",
+                "Its job is to confirm, not to find fault: most lines are expected to be right, and all OK is a "
+                "complete answer. It changes draft.md only for a line that is factually or mathematically wrong.",
+            ], brief_path, confirm="verify")
             return
     draft_sig = hashlib.sha256(draft.read_bytes()).hexdigest()
     if not final.exists() or st.get("validated_draft") != draft_sig:

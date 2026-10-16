@@ -13,11 +13,55 @@ from . import common as C
 from .lint import SUPPORT, parse_md, sentences, strip_md
 from .review import IMPERATIVE, _imperative, _toks
 
-VERDICTS = ("SUPPORTED", "ADVICE", "FIXED", "CUT")
+VERDICTS = ("SUPPORTED", "ADVICE", "FIXED", "CUT", "OK", "UNSURE")
+
+# lines where an error costs the reader money, health, legal standing or safety, or where the page does maths
+SENSITIVE = re.compile(
+    r"=|×|\^|÷|\b\d+(?:\.\d+)?\s?%|[£$€₹]\s?\d"                                   # maths, percentages, money
+    r"|\d[^.]{0,40}\b(rate|interest|tax\w*|allowance|limit|dose|dosage|mg|years?|months?)\b"   # a figure with its unit
+    r"|\b(rate|interest|tax\w*|allowance|limit|dose|dosage)\b[^.]{0,40}\d"
+    r"|\b(illegal|penalt\w*|deadline|must not|never (?:use|mix|take)|danger\w*|poison\w*)\b", re.I)  # rules and safety
 
 
-def _claims(rd: Path) -> list[dict]:
-    md = (rd / "final.md").read_text(encoding="utf-8")
+def build_fast(rd: Path, cap: int = 15) -> int:
+    """The fact-check sheet for the one-flow pass: only the lines where a mistake would hurt (formulas and worked
+    sums first, then figures no fact closely matches, then money, rates, doses, legal and safety rules), at most
+    `cap`, each with its closest fact. A page with none needs no pass."""
+    cl = [c for c in _claims(rd, "draft.md") if SENSITIVE.search(c["sentence"])]
+
+    def rank(c):
+        s = c["sentence"]
+        maths = bool(re.search(r"=|×|\^|÷|\bformula\b", s))
+        return (not maths, c["match"] >= 0.35, -len(re.findall(r"\d", s)))
+    cl = sorted(cl, key=rank)[:cap]
+    cl = sorted(cl, key=lambda c: c["n"])
+    for i, c in enumerate(cl, 1):
+        c["n"] = i
+    C.save_json(rd / "verify_claims.json", [{k: v for k, v in c.items() if k != "fact"} for c in cl])
+    if not cl:
+        return 0
+    b = (C.load_json(rd / "fact_sheet.json") or {}).get("brief") or {}
+    W = [f"# Fact-check sheet: {rd.name}", "",
+         f"{len(cl)} lines from draft.md where a mistake would matter (maths, money, rates, health, legal, safety). "
+         f"Page: {b.get('page_type')} for {b.get('client')}, query \"{b.get('target_query')}\", market {b.get('locale')}.",
+         "Most lines are expected to be right. Give each one a verdict in verify.md as plugins/fact_check/SKILL.md "
+         "says; change the draft only for a line that is wrong.", ""]
+    for c in cl:
+        W.append(f"## C{c['n']} [{c['section'][:60]}]")
+        W.append(f"\"{c['sentence']}\"")
+        f = c["fact"]
+        if f and c["match"] >= 0.15:
+            W.append(f"- closest fact `{f['id']}`: \"{str(f.get('value', ''))[:400]}\""
+                     + (f" — {f['source_url']}" if f.get("source_url") else ""))
+        else:
+            W.append("- no fact is close: check it by reasoning (maths, definitions) or one source lookup")
+        W.append("")
+    (rd / "verify_sheet.md").write_text("\n".join(W), encoding="utf-8")
+    return len(cl)
+
+
+def _claims(rd: Path, source: str = "final.md") -> list[dict]:
+    md = (rd / source).read_text(encoding="utf-8")
     sheet = C.load_json(rd / "fact_sheet.json") or {}
     syn = (sheet.get("brief") or {}).get("synonyms") or {}
     facts = [f for f in sheet.get("facts", []) if f.get("status") in SUPPORT]
@@ -96,4 +140,5 @@ def check(rd: Path, text: str) -> list[str]:
     nourl = [f"C{n}" for n, (v, rest) in rows.items() if v == "SUPPORTED" and not re.search(r"https?://|`[\w:.-]+`", rest)]
     if nourl:
         probs.append("SUPPORTED needs the URL you checked or the fact id: " + ", ".join(nourl[:20]))
+    # an all-OK verify.md is a complete answer: a page with nothing wrong is the expected outcome, never a failure
     return probs

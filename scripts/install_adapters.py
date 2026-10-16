@@ -95,6 +95,15 @@ def writer_agents(appdata: Path) -> dict[str, list[tuple[Path, str]]]:
                    ["read", "edit", "search"])
 
 
+CHECKER_DESC = ("Fact-check pass of the page-SEO pipeline: checks only the lines where a mistake would hurt (formulas, "
+                "sums, money, rates, health, legal, safety), leaves correct lines alone and fixes only real errors.")
+
+
+def checker_agents(appdata: Path) -> dict[str, list[tuple[Path, str]]]:
+    """The fact-checker in each tool, the same calm instructions everywhere."""
+    return _agents("seo-fact-checker", CHECKER_DESC, None, ["read", "edit", "web"])
+
+
 def researcher_agents(appdata: Path) -> dict[str, list[tuple[Path, str]]]:
     """The information-gain researcher (web search + one file write) in each tool; tools left to each tool's
     defaults where a tool names its web tools differently."""
@@ -136,7 +145,7 @@ def targets() -> dict[str, list[tuple[Path, str]]]:
         "copilot": [(appdata / "Code" / "User" / "prompts" / "page-seo.prompt.md",
                      md_with_front({"description": DESC, "mode": "agent"}, "the text the user typed after `/page-seo`"))],
     }
-    for agents in (writer_agents(appdata), researcher_agents(appdata)):
+    for agents in (writer_agents(appdata), researcher_agents(appdata), checker_agents(appdata)):
         for tool, items in agents.items():
             out[tool] = out.get(tool, []) + items
     return out
