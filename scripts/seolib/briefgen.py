@@ -13,7 +13,7 @@ import yaml
 
 from . import common as C
 
-WORDS = {"guide": [1000, 1600], "hub": [600, 900], "spoke": [800, 1300], "product-guide": [900, 1500],
+WORDS = {"tool": [600, 1400], "guide": [1000, 1600], "hub": [600, 900], "spoke": [800, 1300], "product-guide": [900, 1500],
          "service": [800, 1400], "location": [700, 1200], "product": [400, 900], "category": [300, 700],
          "home": [500, 1000], "company": [400, 800]}
 

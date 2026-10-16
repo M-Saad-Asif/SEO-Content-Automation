@@ -111,6 +111,9 @@ def run(ctx):
     main = first[("search", q)]
     if main.get("error"):
         return {"error": main["error"]}
+    if main.get("_gl_ignored"):
+        ctx.decide(f"WARNING: Serper ignored the country code \"{main['_gl_ignored']}\": these results are for "
+                   "another country (Google's default). Check the locale in the brief.")
     organic = []
     for o in main.get("organic", [])[:10]:
         link = o.get("link", "")

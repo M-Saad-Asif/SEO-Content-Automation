@@ -252,6 +252,11 @@ def _derived(v: float, ctx: str, nums: set) -> bool:
     words_n = {"two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
                "twice": 2, "double": 2, "half": 0.5, "triple": 3}
     vals += [float(words_n[w.lower()]) for w in re.findall(r"\b(" + "|".join(words_n) + r")\b", ctx, re.I)]
+    # the calendar's own numbers: 10 years of monthly payments is 120 payments without a 12 on the page
+    for a, b_, k in (("month", "year", 12), ("week", "year", 52), ("day", "year", 365), ("day", "week", 7),
+                     ("hour", "day", 24), ("minute", "hour", 60), ("quarter", "year", 4)):
+        if re.search(rf"\b{a}", ctx, re.I) and re.search(rf"\b{b_}", ctx, re.I):
+            vals.append(float(k))
     if not any(x in nums for x in vals):
         return False
 
@@ -515,8 +520,9 @@ class Linter:
     def r_voice(self):
         """The author's first-person view (2-3 passages, top and middle, no invented experience), information gain
         and the GEO evidence checks (citations, quotations): seolib/voice.py."""
-        from .voice import check
+        from .voice import check, check_required
         check(self)
+        check_required(self)
 
     def r_humanize(self):
         """What separates human from AI writing in the University of Maryland / Google DeepMind research
@@ -1738,8 +1744,13 @@ class Linter:
         if not strict and not auth:
             return
         ui = re.compile(r"\b(tap|select|click|go to|open|choose|scroll|press|toggle|turn on|turn off)\b", re.I)
-        for b, s in self.prose(include_cells=True):
-            names_out = re.sub(r"\b[A-Z][\w'’-]*(?:\s+(?:of|on|and|for|the|in|to|&)?\s*[A-Z][\w'’-]*){2,}", " ", unquote(s))
+        # quotations are taken out per paragraph, before the sentences are split: a quote holding a full stop would
+        # otherwise be cut in two and its halves read as copied text
+        units = [(b, s) for b in self.blocks if b["type"] in ("p", "li")
+                 for s in sentences(re.sub(r"\"[^\"]*\"|“[^”]*”", " … ", b["text"]))]
+        units += [(b, unquote(s)) for b, s in self.prose(include_cells=True) if b["type"] == "tr"]
+        for b, s in units:
+            names_out = re.sub(r"\b[A-Z][\w'’-]*(?:\s+(?:of|on|and|for|the|in|to|&)?\s*[A-Z][\w'’-]*){2,}", " ", s)
             own = shingles(names_out)
             hit = own & strict
             if hit and not ui.search(s):

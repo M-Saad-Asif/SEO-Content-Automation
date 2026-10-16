@@ -699,7 +699,7 @@ def prep(brief_path: str, refresh: bool = False, quiet: bool = False, timing: bo
                                              "target_query", "search_intent", "word_range", "ymyl", "mode",
                                              "hardcode_prices", "h1", "single_brand", "banned_phrases", "proper_nouns",
                                              "link_context_bans", "secondary_queries", "notes", "synonyms",
-                                             "reader_nouns", "known_failures", "internal_codes", "banned_claims", "author", "experience",
+                                             "reader_nouns", "known_failures", "internal_codes", "banned_claims", "author", "experience", "task",
                                              "instructions", "page_type_source", "word_range_source", "page_url_source", "conversion_targets",
                                              "source_context", "site_inventory", "research_format", "batch_plan", "batch_item")},
         "generated_at": C.now_iso(),

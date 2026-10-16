@@ -14,4 +14,5 @@ def run(ctx):
     return {"exists": True, "url": url, "title": page.get("title"), "meta_description": page.get("meta_description"),
             "outline": outline, "words": r.get("words"), "tables": r.get("tables"),
             "text": r.get("text", "")[:60000],
+            "blocks": [[t, x] for t, x in blocks if t in ("h2", "h3", "h4", "p", "li")][:400],  # the plan keeps its headings
             "summary": f"{r.get('words')} words, {len(outline)} headings"}

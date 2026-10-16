@@ -55,23 +55,23 @@ def api_key() -> str | None:
 def locale_params(locale: str) -> tuple[str, str]:
     lang, _, region = (locale or "en").partition("-")
     region = (region or "us").lower()
-    # Google's country code for the United Kingdom is "uk", not the ISO "gb": with gl=gb Google returns organic
-    # results but no People Also Ask and no related searches, so every UK page lost its question data
-    return {"gb": "uk"}.get(region, region), lang.lower()
-
-
-# Google's own country codes that differ from ISO, both ways: if one gives no question data, the other is tried
-ALT_GL = {"uk": ["gb"], "gb": ["uk"]}
+    # ISO country codes ("gb" for the United Kingdom). Serper silently ignores a code it doesn't know ("uk") and
+    # Google then answers for the US: measured 17 Oct 2026, "compound interest calculator" with gl=uk returned
+    # investor.gov, Bankrate and JPMorgan; with gl=gb, thecalculatorsite, Aviva and Hargreaves Lansdown
+    return {"uk": "gb"}.get(region, region), lang.lower()
 
 
 async def _call(client, kind: str, q: str, gl: str, hl: str, credits: list) -> dict:
-    """One search, self-checked: a results page with rankings but no People Also Ask and no related searches is
-    retried with the country's alternative Google code and with plain "en", and the question data of the first
-    variant that has it is kept (the local rankings stay). A wrong or quirky code can never empty a run again."""
+    """One search, self-checked: the country must come back in Serper's echo of the request (a code it ignores
+    means the results are another country's, so the run is told), and a page with rankings but no People Also Ask
+    or related searches in a language other than English is retried in English for its question data. A market
+    with no PAA in Google keeps its own rankings; serp_intel borrows the closest market's questions, labelled."""
     d = await _call_once(client, kind, q, gl, hl, credits)
+    if kind == "search" and not d.get("error") and gl and (d.get("searchParameters") or {}).get("gl", gl) != gl:
+        d["_gl_ignored"] = gl
     if kind != "search" or d.get("error") or not d.get("organic") or d.get("peopleAlsoAsk") or d.get("relatedSearches"):
         return d
-    for g, h in [(a, hl) for a in ALT_GL.get(gl, [])] + ([(gl, "en")] if hl != "en" else []):
+    for g, h in ([(gl, "en")] if hl != "en" else []):
         alt = await _call_once(client, kind, q, g, h, credits)
         if alt.get("peopleAlsoAsk") or alt.get("relatedSearches"):
             d = dict(d, peopleAlsoAsk=alt.get("peopleAlsoAsk", []), relatedSearches=alt.get("relatedSearches", []),

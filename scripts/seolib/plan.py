@@ -37,6 +37,20 @@ BOILER = re.compile(
     r"introduction|overview|final thoughts|key takeaways)\b")
 
 
+# Headings that sell, invite or label a form, not a topic: "See how compound interest can make your savings glow",
+# "Discover more savings tools", "Your savings details"
+PITCH = re.compile(r"(?i)^(see how|discover|explore|find out|check out|learn more|try|start (your|now)|get (your|a free|"
+                   r"started)|why choose|join|sign up|subscribe)\b|^your [\w\s]{2,25}$")
+
+
+def menu_or_pitch(title: str, depth) -> bool:
+    """A competitor heading that is a link in its menu (no prose under it on its page) or a sales line."""
+    if PITCH.search((title or "").strip()):
+        return True
+    n = text_under(depth, title)
+    return n is not None and n < 25
+
+
 def boiler(title: str) -> bool:
     """The whole heading is furniture ("Reviews" is; "Reviews of drain unblockers" is a topic)."""
     s = (title or "").strip(" :?!.-–—")
@@ -128,10 +142,49 @@ def build(rd: Path) -> dict:
             rf"(?i)\b{re.escape(m.group(1))}\b", title))
 
     heads: list[dict] = []  # {"title", "level", "covers": [...], "questions": [...], "kind", "parent"}
+    depth = section_depths(C.load_json(rd / "research" / "competitor_scrape.json") or {})
+
+    # rewrite: the live page already ranks. Its own headings come first, in its order, each with its own text as the
+    # client's facts (its formula, its worked example, its inputs); page one's sections merge into them below. A
+    # rewrite that drops what the page already says loses what ranks.
+    cp = C.load_json(rd / "research" / "current_page.json") or {}
+    if b.get("task") == "rewrite" and cp.get("exists") and cp.get("blocks"):
+        live_facts, cur, n = {}, None, 0
+        for tag, text in cp["blocks"]:
+            if tag in ("h2", "h3"):
+                ht = sentence_case(str(text))
+                if boiler(ht) or re.search(r"(?i)\b(questions|faqs?)$", ht) or foreign(ht, home_geo, home_cur):
+                    cur = None  # furniture, or an FAQ block: its answers stay usable, not as a heading
+                    continue
+                item = {"title": ht, "level": 2, "covers": [], "questions": [], "kind": "live", "sites": 0, "subs": []}
+                if tag == "h3" and heads:
+                    item["level"] = 3
+                    heads[-1]["subs"].append(item)
+                else:
+                    heads.append(item)
+                cur = item
+            elif tag in ("p", "li") and len(str(text).split()) >= 6:
+                n += 1
+                fid = f"live:{n}"
+                live_facts[fid] = {"id": fid, "claim": f"{client}'s current page"
+                                   + (f", under \"{cur['title']}\"" if cur else ""), "value": str(text),
+                                   "status": "verified", "basis": "client_page", "verified": True,
+                                   "source_url": b.get("page_url"), "retrieved_at": C.now_iso()}
+                if cur is not None:
+                    cur.setdefault("live", []).append(fid)
+        if live_facts:
+            with C.file_lock(rd / "fact_sheet.json"):
+                sh = C.load_json(rd / "fact_sheet.json") or {}
+                sh["facts"] = [f for f in sh.get("facts", []) if not str(f.get("id", "")).startswith("live:")] \
+                    + list(live_facts.values())
+                C.save_json(rd / "fact_sheet.json", sh)
+            sheet = C.load_json(rd / "fact_sheet.json") or sheet
 
     def find_dup(title: str, pool=None):
         t = own(title) or words(title)
         for h in (pool if pool is not None else heads):
+            if not own(title) and not own(h["title"]):  # "How compound interest calculator" and "Compound interest
+                return h                                  # calculator" say nothing beyond the topic: one heading
             if jac(t, own(h["title"]) or words(h["title"])) >= 0.6:
                 return h
             for q in h["questions"]:
@@ -154,7 +207,7 @@ def build(rd: Path) -> dict:
         fit = [q for q in h2q if not opposite(q["q"], s["title"])]
         h2q = fit + [q for q in h2q if q not in fit]  # an opposite question becomes its own H2 below
         title = fit[0]["q"] if fit else s["title"]
-        if foreign(title, home_geo, home_cur) or boiler(title):
+        if foreign(title, home_geo, home_cur) or boiler(title) or (not h2q and menu_or_pitch(title, depth)):
             continue
         sec = {"title": sentence_case(title), "level": 2, "covers": [s["id"]], "questions": [], "kind": "topic",
                "sites": len(s.get("covered_by") or []), "subs": []}
@@ -180,7 +233,8 @@ def build(rd: Path) -> dict:
                 sec["questions"].append(q["q"])  # a search phrasing: answered inside the section in its words
         flipped = None  # steps that contradict the section's title ("Plunge the sink" under "…without a plunger?")
         for ss in s.get("subsections", []):
-            if foreign(ss["title"], home_geo, home_cur) or boiler(ss["title"]) or find_dup(ss["title"], [sec] + sec["subs"]):
+            if foreign(ss["title"], home_geo, home_cur) or boiler(ss["title"]) or menu_or_pitch(ss["title"], depth) \
+                    or find_dup(ss["title"], [sec] + sec["subs"]):
                 continue
             sub = {"title": sentence_case(ss["title"]), "level": 3, "covers": [ss["id"]], "questions":
                    [q["q"] for q in ss.get("questions", []) if usable(q["q"])], "kind": "topic",
@@ -204,6 +258,8 @@ def build(rd: Path) -> dict:
             return
         if single_site and not entity_based(title):
             return  # one site's slogan or joke, not the topic
+        if single_site and menu_or_pitch(title, depth):
+            return  # a link in that page's menu ("Pension calculator"), or a sales line, not a section
         t = own(title) or words(title)
         best = max(heads, key=lambda h: jac(t, own(h["title"]) | set().union(*(own(x["title"]) for x in h["subs"])))
                    if h["subs"] else jac(t, own(h["title"])), default=None)
@@ -260,6 +316,31 @@ def build(rd: Path) -> dict:
                       "kind": "cta", "sites": 0, "subs": [],
                       "note": "the next step: " + (f"\"{ctas[0]['text']}\" → {ctas[0]['url']}" if ctas else "the client's page")})
 
+    # a tool page (a calculator, converter, checker…): how to use it and a worked example are always there
+    if ptype == "tool":
+        name = (b.get("h1") or query).strip()
+        name = name[:1].lower() + name[1:] if name[1:2].islower() else name
+
+        def ensure(title: str, note: str, at: int | None = None, same: str = ""):
+            # the live page or page one may already have this section under another name ("Inputs for the …")
+            dup = find_dup(title) or next((h for h in heads if same and re.search(same, " ".join(
+                [h["title"]] + [x["title"] for x in h["subs"]]))), None)
+            if dup:
+                dup["note"] = (dup.get("note", "") + " " + note).strip()
+                return
+            heads.insert(len(heads) if at is None else at, {"title": title, "level": 2, "covers": [], "questions": [],
+                                                             "kind": "tool", "sites": 0, "subs": [], "note": note})
+        ensure(f"How to use the {name}", "each input the tool asks for, in its order on the page: what to enter and "
+               "where to find it", at=0, same=r"(?i)\binputs?\b|\bhow to use\b|\busing the\b")
+        fi = next((i for i, h in enumerate(heads) if re.search(r"(?i)formula|how .*calculat|method", h["title"])), None)
+        ensure("Worked example", "one complete example with real figures: the inputs, the formula or method filled in, "
+               "each step, the result; as numbered steps or a table", at=None if fi is None else fi + 1,
+               same=r"(?i)\bworked example\b|\bexample calculation\b")
+    for h in heads:  # a formula heading shows the formula
+        if re.search(r"(?i)\bformulae?\b|\bequation\b", " ".join([h["title"]] + [x["title"] for x in h["subs"]])):
+            h["note"] = (h.get("note", "") + " write the formula itself as an equation, define each term, then fill it "
+                         "in once with real figures").strip()
+
     # a ranking page's numbered steps arrive as its H3s ("Seal the overflow", "Plunge the sink"): two or more
     # instructions under one heading are that section's numbered list, not headings
     for h in heads:
@@ -278,11 +359,13 @@ def build(rd: Path) -> dict:
             set().union(*(own(x["title"]) for x in h["subs"])) if True else set()
         if h["kind"] in ("offer", "cta"):
             return [f["id"] for f in facts if str(f.get("id", "")).startswith("offer:")][:6]
+        mine = list(h.get("live", [])) + [i for x in h["subs"] for i in x.get("live", [])]  # the live page's own text
+        used.update(mine)
         scored = sorted(((len(t & ft), -(f.get("consensus") or 1), f["id"]) for f, ft in ftok
                          if len(t & ft) >= (2 if len(t) >= 3 else 1)), reverse=True)
         ids = [i for _, _, i in scored if i not in used][:8]
         used.update(ids)
-        return ids
+        return mine + ids
     for h in heads:
         h["facts"] = assign(h)
     # no consensus point is left behind: unplaced points two or more sites make go to their closest heading
@@ -293,12 +376,26 @@ def build(rd: Path) -> dict:
         best["facts"].append(f["id"])
         used.add(f["id"])
 
-    # information gain: every item beyond page one goes under the heading it fits (it's why the page is worth reading)
+    # information gain: an item beyond page one goes under the heading it is about, and only there: an item no
+    # heading is about (ISA statistics on a compound interest calculator) is left out rather than forced in
+    placed = set()
     for f, ft in ftok:
-        if str(f["id"]).startswith("gain:") and f["id"] not in used and heads:
-            best = max(heads, key=lambda h: len(ft & (own(h["title"]) | set().union(*(own(x["title"]) for x in h["subs"])))))
-            best["facts"].append(f["id"])
-            used.add(f["id"])
+        if str(f["id"]).startswith("gain:") and heads:
+            hw = lambda h: own(h["title"]) | set().union(*(own(x["title"]) for x in h["subs"])) | \
+                set().union(*(own(q) for q in h["questions"]))
+            best = max(heads, key=lambda h: len(ft & hw(h)))
+            if len(ft & hw(best)) >= (2 if len(hw(best)) >= 3 else 1):
+                if f["id"] not in best["facts"]:
+                    best["facts"].append(f["id"])
+                for h in heads:
+                    if h is not best and f["id"] in h["facts"]:
+                        h["facts"].remove(f["id"])
+                used.add(f["id"])
+                placed.add(f["id"])
+            else:
+                for h in heads:
+                    if f["id"] in h["facts"]:
+                        h["facts"].remove(f["id"])
     for h in heads:
         h["gain"] = [i for i in h["facts"] if str(i).startswith("gain:")]
     # quotations (GEO: quotes, statistics and cited sources raise visibility in AI answers): 1-2 exact quotes
@@ -340,17 +437,26 @@ def build(rd: Path) -> dict:
     titles = lm.get("client_titles") or {}
     targets = list(dict.fromkeys((rel.get("commercial") or [])[:4] + (rel.get("guides") or [])[:5]
                                  + [c["url"] for c in ctas[:2]]))
+    unplaced: list[str] = []
     for u in targets:
         tt = own(titles.get(u, "") + " " + re.sub(r"[-_/]", " ", u.split("/", 3)[-1]))
         best = max(heads, key=lambda h: len(tt & (own(h["title"]) | set().union(*(own(x["title"]) for x in h["subs"])))),
                    default=None)
         if best is not None and tt & (own(best["title"]) | set().union(*(own(x["title"]) for x in best["subs"]))):
             best.setdefault("links", []).append(u)
+        else:
+            unplaced.append(u)
+    # a related client page that shares only the topic's words with every heading ("equity release compound interest
+    # calculator") still belongs on the page: the two closest go to the section about the topic itself
+    body = [h for h in heads if h["kind"] not in ("offer", "cta")]
+    for u in unplaced[:2]:
+        if body:
+            tw = words(titles.get(u, "") + " " + re.sub(r"[-_/]", " ", u.split("/", 3)[-1]))
+            max(body, key=lambda h: len(tw & words(h["title"])) - 0.01 * heads.index(h)).setdefault("links", []).append(u)
 
     # 6. words per heading, and parts for writers working at the same time. No fixed length for every page: each
     # heading gets the room the ranking pages give that topic (the median of what they write under it) and the
     # room its facts need; the page is the sum. A range the operator set in the brief is the only hard limit.
-    depth = section_depths(C.load_json(rd / "research" / "competitor_scrape.json") or {})
     sec_heads = {s["id"]: s.get("headings") or [s["title"]] for s in out.get("sections", [])}
     for s in out.get("sections", []):
         for ss in s.get("subsections", []):
@@ -391,6 +497,9 @@ def build(rd: Path) -> dict:
         lo, hi = int(total * 0.8), int(total * 1.25)
     with C.file_lock(rd / "fact_sheet.json"):
         sh = C.load_json(rd / "fact_sheet.json")
+        for f in sh.get("facts", []):
+            if str(f.get("id", "")).startswith("gain:"):
+                f["placed"] = f["id"] in placed
         sh["brief"]["word_range_effective"] = [lo, hi]
         sh["brief"]["length_from"] = "operator" if explicit else "plan"
         C.save_json(rd / "fact_sheet.json", sh)
@@ -422,13 +531,19 @@ def section_depths(comp: dict) -> list[tuple[set, int, int]]:
                         break
                     under_sub = True
                     continue
-                if t2 in ("p", "li", "td", "tr"):
-                    n = len(str(x2).split())
+                n = len(str(x2).split())
+                if t2 in ("p", "td", "tr") or (t2 == "li" and n >= 6):  # "ISA calculator" list items are links
                     whole += n
                     own += 0 if under_sub else n
-            if whole:
-                out.append((words(text), own, whole))
+            out.append((words(text), own, whole))
     return out
+
+
+def text_under(depth: list[tuple[set, int, int]], title: str) -> int | None:
+    """The fewest words a ranking page writes under this heading (None: no page has it)."""
+    k = words(title)
+    got = [w2 for w, o, w2 in depth if w and k and jac(k, w) >= 0.6]
+    return min(got) if got else None
 
 
 def depth_of(depth: list[tuple[set, int, int]], names: list[str], own_only: bool = False) -> int:
@@ -456,7 +571,7 @@ def mark_views(heads: list[dict], byid: dict) -> None:
     spread out. Gain items that are experiences or opinions make a heading a better place for one."""
     for h in heads:
         h.pop("view", None)
-    ok = [i for i, h in enumerate(heads) if h["kind"] not in ("offer", "cta") and (i + 1) / len(heads) <= VIEW_SHARE]
+    ok = [i for i, h in enumerate(heads) if h["kind"] not in ("offer", "cta", "tool") and (i + 1) / len(heads) <= VIEW_SHARE]
     if not ok and heads:
         ok = [i for i, h in enumerate(heads) if h["kind"] not in ("offer", "cta")][:1]
 
@@ -505,7 +620,9 @@ def render(plan: dict, facts_by_id: dict) -> list[str]:
             if u:
                 link_at.setdefault(u, h["title"])
     if plan.get("variants"):
-        L.append("  Variants of the main query (answer each in one comparison table or list near the top; a row only "
+        L.append("  Variants of the main query (answer them in one comparison table or list near the top whose first "
+                 "column names the option, e.g. the frequency or the type, never the search (no \"What you searched\"); "
+                 "a row only "
                  "where a fact carries it): " + "; ".join(f"\"{v}\"" for v in plan["variants"][:10]))
     for part in plan.get("parts", []):
         L.append(f"\n### Part {part['id']}" + (" (also writes the front matter, H1 and opening)" if part["with_intro"] else ""))

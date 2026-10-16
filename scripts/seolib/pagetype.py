@@ -15,7 +15,10 @@ from urllib.parse import urlparse
 
 from . import common as C
 
-TYPES = ("service", "product", "category", "home", "guide", "location", "company")
+TYPES = ("service", "product", "category", "home", "guide", "location", "company", "tool")
+# A page whose main content is an interactive tool: the tool is the offer, the text explains it
+TOOL_WORDS = re.compile(r"\b(calculators?|converters?|checkers?|estimators?|planners?|generators?|simulators?|"
+                        r"trackers?|quiz(zes)?|finders?|counters?|timers?|tool)\b", re.I)
 
 BLOG_PATH = re.compile(r"/(blog|news|guides?|insights?|articles?|learn|resources|knowledge(-base)?|advice|help|"
                        r"hub|academy|journal|stories|magazine|tips)(/|$)", re.I)
@@ -149,7 +152,8 @@ def commerce(text: str, url: str, title: str = "") -> dict:
             "offers": len(OFFER.findall(flat[:8000]))}
 
 
-SAID_TYPE = [("product-guide", r"\b(product|buying|buyer'?s?) guide\b"),
+SAID_TYPE = [("tool", r"\b(calculator|converter|checker|estimator|tool) page\b"),
+             ("product-guide", r"\b(product|buying|buyer'?s?) guide\b"),
              ("hub", r"\b(hub|pillar) page\b"),
              ("spoke", r"\bspoke page\b"),
              ("location", r"\b(location|local|city|area) (landing )?page\b"),
@@ -174,7 +178,7 @@ COMMERCIAL_Q = re.compile(r"\b(services?|agenc(y|ies)|compan(y|ies)|providers?|s
 
 def explicit_type(request: str) -> str | None:
     """Only operator instructions establish an explicit type; query words are intent signals."""
-    typed = re.search(r"\bpage[_ -]type\s*[:=]\s*(product-guide|service|product|category|location|home|company|guide|hub|spoke)\b",
+    typed = re.search(r"\bpage[_ -]type\s*[:=]\s*(product-guide|service|product|category|location|home|company|guide|hub|spoke|tool)\b",
                       request or "", re.I)
     if typed:
         return typed.group(1).lower()
@@ -191,6 +195,8 @@ def infer_type(request: str, keyword: str) -> tuple[str, str]:
     said = explicit_type(request)
     if said:
         return said, f"the request says so ({said})"
+    if TOOL_WORDS.search(keyword or "") and not QUESTION_H1.match(keyword or ""):
+        return "tool", f"the query asks for a tool ({TOOL_WORDS.search(keyword).group(0)})"
     if QUESTION_H1.match(keyword or "") or re.search(r"\b(how|what|why|when|which|guide|tips|ideas|vs|versus)\b",
                                                      keyword or "", re.I):
         return "guide", "an informational query (a question, guide or comparison)"
@@ -291,6 +297,14 @@ def classify(url: str, doc: dict | None, html: str = "", site: dict | None = Non
     if in_blog and score["product"] < 5:
         # the blog section outranks the banners and buttons the site repeats on every page
         score["guide"] = max(score["guide"], score["service"] + 1)
+    # A tool page (a calculator, converter, checker…): its H1 or title names the tool and the page has the inputs
+    # to use it. Its example results look like prices and its form like an enquiry form, so it is decided before
+    # the commercial signals are weighed (a compound interest calculator was once read as a service page).
+    inputs = len(re.findall(r"<input\b[^>]*type=[\"']?(number|range|text|date)|<select\b", html or "", re.I))
+    if TOOL_WORDS.search(f"{h1} {title} {slug}") and (inputs >= 2 or not html) and not QUESTION_H1.match(h1 or ""):
+        ev.append(f"a tool page: \"{TOOL_WORDS.search(f'{h1} {title} {slug}').group(0)}\" in its H1, title or "
+                  f"address and {inputs} input(s) on the page")
+        return "tool", ev
     # Navigation and shared banners supply commercial signals on every shop page.
     # Specific page evidence takes precedence over those generic signals.
     if path not in ("", "/") and not in_blog:

@@ -24,6 +24,32 @@ EXPERIENCE = re.compile(
     r"\bI (?:found|noticed|learned|discovered) (?:that |when |it )?")
 
 
+def check_required(lint) -> None:
+    """What a section's heading promises is in it: a formula heading shows an equation, a worked example shows its
+    figures. A table never talks about the reader's search ("What you searched")."""
+    sections, cur = [], None
+    for b in lint.blocks:
+        if b["type"] in ("h2", "h3"):
+            cur = [b, []]
+            sections.append(cur)
+        elif cur is not None:
+            cur[1].append(b)
+    for h, body in sections:
+        text = " ".join(x.get("raw") or x["text"] for x in body)
+        if re.search(r"(?i)\bformulae?\b|\bequation\b", h["text"]) and not re.search(r"=|\^|×|\*\*|\$\$|`", text):
+            lint.add("F01-formula-missing", "block", h, h["text"], "the section is about a formula but never shows it",
+                     "write the formula as an equation (A = P(1 + r/n)^(nt) style), define each term, fill it in once")
+        if re.search(r"(?i)\bworked example\b|\bexample calculation\b", h["text"]) and \
+                len(re.findall(r"\d[\d,.]*", text)) < 3:
+            lint.add("F02-example-without-figures", "block", h, h["text"], "a worked example with no real figures",
+                     "give the inputs, each step and the result as numbers from the facts")
+    for b in lint.blocks:
+        if b["type"] == "tr" and re.search(r"(?i)what you (searched|asked|typed)|search(ed)? (term|query)|your (query|search)",
+                                           b["text"]):
+            lint.add("H05-meta-commentary", "block", b, b["text"][:120], "the table talks about the reader's search",
+                     "name the option in the first column (the frequency, the type), not the search")
+
+
 def _unq(s: str) -> str:
     return re.sub(r"[\"“][^\"”]{1,400}[\"”]", " ", s)
 
@@ -91,12 +117,13 @@ def check(lint) -> None:
     # 2. information gain: the items beyond page one are on the page
     facts = lint.sheet.get("facts") or []
     links = {u.rstrip("/") for u in re.findall(r"\]\((https?://[^)\s]+)\)", lint.md)}
-    gain = [f for f in facts if str(f.get("id", "")).startswith("gain:")]
+    # only the items the plan placed under a heading they are about: an item no heading is about is left out
+    gain = [f for f in facts if str(f.get("id", "")).startswith("gain:") and f.get("placed", True)]
     if gain:
         paras = [_words(b["text"]) for b in lint.blocks if b["type"] in ("p", "li", "tr")]
         used = [f for f in gain if (f.get("source_url") or "").rstrip("/") in links
                 or any(len(_words(f.get("point", "")) & p) / max(1, len(_words(f.get("point", "")))) >= 0.5 for p in paras)]
-        need = min(3, len(gain))
+        need = min(2, len(gain))
         if len(used) < need:
             left = [f["id"] for f in gain if f not in used]
             lint.add("IG01-no-information-gain", "block", None, f"{len(used)} of {len(gain)} items beyond page one used",

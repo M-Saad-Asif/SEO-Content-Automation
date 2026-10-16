@@ -44,7 +44,9 @@ def task_lines(brief: dict, R: str) -> list[str]:
         "Use your own web search and page reading (the tool's built-in search; never Serper, never a login, never "
         "Reddit, never a page that blocks you). At most 4 searches and 6 page reads; stop after about 2 minutes.",
         "Look past the first page of results for the exact query: page one is already covered.",
-        "Keep 4-8 items. Each item is something a reader can't get from the top 10 results.",
+        "Keep 4-8 items. Each item is something a reader can't get from the top 10 results AND helps a reader of "
+        "this page do or understand its task (for a calculator: what changes the result, how people read it, common "
+        "mistakes). Skip statistics, news and policy that don't change the answer.",
         f"Write {R}/gain_X.yaml (X = your letter) with one write, in exactly this form (YAML list, nothing else):",
         "- kind: experience | opinion | data | change | mistake | cost",
         "  point: one sentence in your own words (figures exactly as the source gives them, with their condition)",

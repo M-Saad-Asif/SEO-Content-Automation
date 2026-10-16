@@ -121,7 +121,8 @@ def build(rd: Path) -> Path:
               + "; ".join(note(a["sentence"], 10) for a in f["conflicts"][:2]) for f in conf]
     if client:
         W += ["", f"### {b.get('client')}'s own words (usable as they are, in its voice; never stretch them)"]
-        W += [f"- `{f['id']}` \"{_cut(f.get('value'), 200)}\"" for f in client[:12]]
+        live = [f for f in client if str(f.get("id", "")).startswith("live:")]
+        W += [f"- `{f['id']}` \"{_cut(f.get('value'), 400 if f in live else 200)}\"" for f in (live + [x for x in client if x not in live][:12])]
     W += ["", "## 4. Never",
           "- Mention the research (\"top results\", \"other guides\", \"according to competitors\").",
           "- A figure no fact above carries (arithmetic you show from facts is fine), or a losing figure.",

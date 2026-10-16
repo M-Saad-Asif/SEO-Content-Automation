@@ -105,7 +105,13 @@ def lines(sheet: dict) -> list[str]:
     o = offer(sheet)
     commercial = pt in COMMERCIAL
     L = ["", "## Page job (read this first: it decides what the page is for and how it is built)"]
-    if commercial:
+    if pt == "tool":
+        L.append(f"- This is a **tool page** of {client}: the tool itself (\"{b.get('target_query')}\") is on the "
+                 "page, above the text. The text helps the reader use it and trust its result: what it works out, each "
+                 "input in the order the tool asks for it, the method or formula behind it (written out), a worked "
+                 "example with real figures, how to read the result, and its limits. No sales pitch and no \"get in "
+                 "touch\": the reader's next step is using the tool.")
+    elif commercial:
         L.append(f"- This is a **{pt} page** of {client}. It answers \"{b.get('target_query')}\" AND makes {client}'s "
                  f"offer: the reader should leave knowing what {client} does about their need and how to start.")
     elif selling(sheet):
