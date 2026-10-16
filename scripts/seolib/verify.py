@@ -31,6 +31,31 @@ def build_fast(rd: Path, cap: int = 15) -> int:
     sums first, then figures no fact closely matches, then money, rates, doses, legal and safety rules), at most
     `cap`, each with its closest fact. A page with none needs no pass."""
     cl = [c for c in _claims(rd, "draft.md") if SENSITIVE.search(c["sentence"])]
+    # a line the site's own rates data already states is checked: its figures sit together in one clause of the data
+    # ("20% up to 37,700"), its year is the data's year, and it does no sum (a worked example can add up wrong from
+    # the right rates). Figures the data holds in different clauses may be paired wrongly ("45% above £37,700"), so
+    # those lines, and everything the data doesn't hold, keep this pass
+    from .siterates import numbers
+    sheet = C.load_json(rd / "fact_sheet.json") or {}
+    rates = [(numbers(f.get("value")), numbers(f.get("condition")),
+              [numbers(x) for x in re.split(r";|,\s", str(f.get("value") or ""))],
+              _toks(f"{f.get('value')} {f.get('claim')}", {}))
+             for f in sheet.get("facts", []) if f.get("basis") == "site_rates"]
+
+    def in_rates(c) -> bool:
+        s = c["sentence"]
+        figs = numbers(s)
+        if not rates or not figs or re.search(r"=|×|\^|÷|\bformula\b", s):
+            return False
+        st = _toks(s, {})
+        for nums, years, clauses, tk in rates:
+            rest = figs - years
+            if len(st & tk) >= 2 and figs <= nums | years and \
+                    (len(rest) <= 1 or any(rest <= cl for cl in clauses)):
+                return True
+        return False
+    by_data = [c for c in cl if in_rates(c)]
+    cl = [c for c in cl if c not in by_data]
 
     def rank(c):
         s = c["sentence"]
@@ -49,12 +74,19 @@ def build_fast(rd: Path, cap: int = 15) -> int:
          f"Page: {b.get('page_type')} for {b.get('client')}, query \"{b.get('target_query')}\", market {b.get('locale')}.",
          "Most lines are expected to be right. Give each one a verdict in verify.md as plugins/fact_check/SKILL.md "
          "says; change the draft only for a line that is wrong.", ""]
+    if by_data:
+        W[4:4] = [f"{len(by_data)} more line(s) state only figures in {b.get('client')}'s own rates data and are not "
+                  "listed. A `rates:` fact below is that data: it is correct, so a figure that differs from it is the error.",
+                  ""]
     for c in cl:
         W.append(f"## C{c['n']} [{c['section'][:60]}]")
         W.append(f"\"{c['sentence']}\"")
         f = c["fact"]
         if f and c["match"] >= 0.15:
-            W.append(f"- closest fact `{f['id']}`: \"{str(f.get('value', ''))[:400]}\""
+            own = f.get("basis") == "site_rates"
+            W.append(f"- closest fact `{f['id']}`{' (the site' + chr(39) + 's own rates data)' if own else ''}: "
+                     f"\"{str(f.get('value', ''))[:900 if own else 400]}\""
+                     + (f" [applies to: {f['scope']}]" if own and f.get("scope") else "")
                      + (f" — {f['source_url']}" if f.get("source_url") else ""))
         else:
             W.append("- no fact is close: check it by reasoning (maths, definitions) or one source lookup")

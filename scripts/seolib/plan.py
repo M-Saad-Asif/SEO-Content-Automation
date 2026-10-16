@@ -664,7 +664,7 @@ def quote_candidates(facts: list[dict]) -> list[dict]:
     out = []
     for f in facts:
         v = str(f.get("value") or "")
-        if f.get("status") != "verified" or not f.get("source_url") or f.get("basis") == "client_page" \
+        if f.get("status") != "verified" or not f.get("source_url") or f.get("basis") in ("client_page", "site_rates") \
                 or str(f.get("id", "")).startswith(("offer:", "client", "serp:")):
             continue
         if 8 <= len(v.split()) <= 40 and not re.search(r"[|\n]", v):

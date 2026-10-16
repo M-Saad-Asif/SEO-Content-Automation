@@ -50,8 +50,9 @@ def audit(rd: Path) -> list[tuple[str, int, int, list[str]]]:
     row("page-one points made by 2+ sites", by(lambda f: f.get("status") == "serp" and (f.get("consensus") or 1) >= 2),
         lambda i: i in ids)
     row("authority facts", by(lambda f: f.get("status") in ("verified", "captured", "operator")
-                              and f.get("basis") not in ("client_page",) and not str(f["id"]).startswith(("offer:", "client", "gain:"))),
+                              and f.get("basis") not in ("client_page", "site_rates") and not str(f["id"]).startswith(("offer:", "client", "gain:"))),
         lambda i: i in ids)
+    row("the site's own rates data", by(lambda f: f.get("basis") == "site_rates"), lambda i: i in ids)
     row("client facts and offer", by(lambda f: f.get("basis") == "client_page" or str(f["id"]).startswith(("offer:", "client"))),
         lambda i: i in ids)
     row("items beyond page one (gain)", by(lambda f: str(f["id"]).startswith("gain:")), lambda i: i in ids)

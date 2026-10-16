@@ -539,7 +539,15 @@ def prep(brief_path: str, refresh: bool = False, quiet: bool = False, timing: bo
     for i, cf in enumerate(brief["client_facts"]):
         facts.append({"id": f"client:{i + 1}", "claim": "client fact (operator)", "value": cf,
                       "status": "operator", "basis": "operator", "verified": False, "source_url": None})
-    site_text = " ".join([page.get("text", "")] + [(r2.get(p["url"]) or {}).get("text", "") for p in products]
+    # the site's own rates data (what its calculators run on, kept from official sources): verified as it stands;
+    # anything else the page says keeps the pipeline's own checks
+    if brief.get("site_rates_dir"):
+        from .siterates import facts_for as site_rates
+        rates = site_rates(brief, page_info, page.get("text", "") if page_info.get("exists") else "")
+        facts += rates
+        if not quiet:
+            print(f"  site rates data: {len(rates)} fact(s) for this page")
+    site_text =" ".join([page.get("text", "")] + [(r2.get(p["url"]) or {}).get("text", "") for p in products]
                          + [(r1.get(u) or {}).get("text", "") for u in claim_pages])
     claims = []
     for i, c in enumerate(brief["approved_claims"]):

@@ -206,7 +206,7 @@ def run(ctx):
             for w in c["tk"]:
                 index[w].add(len(clusters) - 1)
     official = [f for f in C.load_json(ctx.rd / "fact_sheet.json").get("facts", [])
-                if f.get("status") == "verified" and f.get("basis") in ("official_page_auto", "script_fetch", "agent_capture")]
+                if f.get("status") == "verified" and f.get("basis") in ("official_page_auto", "script_fetch", "agent_capture", "site_rates")]
     off_idx = [(toks(str(f.get("value", ""))), figures(str(f.get("value", ""))), f) for f in official]
     auth_vals = {fig for _, figs, _ in off_idx for fig in figs}
     total = len({p["domain"] for p in pages})

@@ -84,8 +84,9 @@ def build(rd: Path) -> Path:
     W += render(plan, {f["id"]: f for f in facts})
 
     gain = [f for f in facts if str(f.get("id", "")).startswith("gain:")]
+    rates = [f for f in facts if f.get("basis") == "site_rates"]
     auth = [f for f in facts if f.get("status") in ("verified", "captured", "operator") and f not in gain
-            and f.get("basis") != "client_page" and not str(f.get("id", "")).startswith(("offer:", "client"))]
+            and f.get("basis") not in ("client_page", "site_rates") and not str(f.get("id", "")).startswith(("offer:", "client"))]
     client = [f for f in facts if f.get("status") in ("verified", "captured", "operator")
               and (f.get("basis") == "client_page" or str(f.get("id", "")).startswith(("offer:", "client")))]
     quoted = {h["quote"] for h in plan["headings"] if h.get("quote")}
@@ -105,6 +106,13 @@ def build(rd: Path) -> Path:
               "source named and linked in the same sentence)"]
         W += [f"- `{f['id']}` \"{' '.join(str(f.get('value')).split())}\" — {f.get('source_url')}"
               for f in facts if f["id"] in quoted]
+    if rates:
+        W += ["", f"### {b.get('client')}'s own rates data (the figures its calculators use, checked against the official "
+              "source on the date shown: they win any disagreement, page one's included; say which year or country a "
+              "figure is for, and link the official source, never the data)"]
+        W += [f"- `{f['id']}` {_cut(f.get('value'), 700)}" + (f" ({_cut(f['meaning'], 240)})" if f.get("meaning") else "")
+              + f" — {f.get('source_url')} (checked {f.get('retrieved_at')})"
+              + (f" [applies to: {f['scope']}]" if f.get("scope") else "") for f in rates]
     if auth:
         W += ["", "### Authorities (they win any disagreement; link the source on the words a reader would check)"]
         W += [f"- `{f['id']}` {note(f.get('value'), 30)} — {f.get('source_url')}"
