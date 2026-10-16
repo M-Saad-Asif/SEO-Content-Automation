@@ -24,6 +24,35 @@ EXPERIENCE = re.compile(
     r"\bI (?:found|noticed|learned|discovered) (?:that |when |it )?")
 
 
+CALC_SITE = re.compile(r"(?i)calc|convert")
+
+
+def check_sites(lint) -> None:
+    """Other online calculator websites are never named or linked (a bank's or a brand's own tool may be described,
+    never linked: the link rules already refuse addresses outside the link map). The page never links to itself."""
+    client = re.sub(r"^www\.", "", (lint.b.get("domain") or "").lower()).split("/")[0]
+    rivals = {re.sub(r"^www\.", "", str(d).lower()) for d in (lint.b.get("competitor_sites") or [])}
+    serp = (lint.research.get("serp_intel") or {}).get("organic") or []
+    rivals |= {re.sub(r"^www\.", "", o.get("domain", "")) for o in serp if CALC_SITE.search(o.get("domain", ""))}
+    rivals.discard(client)
+    rivals.discard("")
+    page = (lint.b.get("page_url") or "").rstrip("/")
+    for b in lint.blocks:
+        raw = b.get("raw") or b["text"]
+        for u in re.findall(r"\]\((https?://[^)\s]+)\)", raw):
+            host = re.sub(r"^www\.", "", u.split("/")[2].lower())
+            if page and u.rstrip("/") == page:
+                lint.add("U25-self-link", "block", b, u, "the page links to itself", "drop the link; keep the words")
+            elif any(host == r or host.endswith("." + r) for r in rivals):
+                lint.add("C04-calculator-site", "block", b, u, "a link to another online calculator website",
+                         "drop the link and the site's name; state the point in your own words")
+        for r in rivals:
+            name = r.split(".")[0]
+            if len(name) > 4 and re.search(rf"(?i)\b{re.escape(name)}\b|\b{re.escape(r)}\b", re.sub(r"\]\([^)]*\)", "]", raw)):
+                lint.add("C04-calculator-site", "block", b, b["text"][:140], f"names another online calculator website "
+                         f"({r})", "never name other calculator sites; state the point in your own words")
+
+
 def check_required(lint) -> None:
     """What a section's heading promises is in it: a formula heading shows an equation, a worked example shows its
     figures. A table never talks about the reader's search ("What you searched")."""

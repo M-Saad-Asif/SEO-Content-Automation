@@ -154,7 +154,8 @@ def run(ctx):
     cap = 8 if ctx.deep() else 5
     # another market's questions leak into a SERP (a UK search showing "$100,000" or a US radio host): a question in
     # another currency, or naming someone or something no ranking page for this market mentions, isn't this reader's
-    region = (ctx.brief.get("locale") or "en").partition("-")[2].lower() or ""
+    from seolib.market import filter_locale
+    region = filter_locale(ctx.brief).partition("-")[2].lower()  # "" on a global page
     home_cur = {"gb": "£", "uk": "£", "us": "$", "ca": "$", "au": "$", "nz": "$", "ie": "€", "de": "€", "fr": "€",
                 "es": "€", "it": "€", "nl": "€", "ae": "aed", "in": "₹"}.get(region, "")
     foreign_cur = [c for c in ("$", "£", "€", "₹") if c != home_cur and home_cur]
@@ -181,6 +182,8 @@ def run(ctx):
         return name_home[name]
 
     def foreign(q):
+        if not region:
+            return ""  # a global page: every country's version of the question is in scope
         if any(c in q for c in foreign_cur) or (home_cur != "$" and re.search(r"\bdollars?\b", q, re.I)):
             return "another market's currency"
         # "how to grow tomatoes in pots nz" on a UK page: another country's version of the question

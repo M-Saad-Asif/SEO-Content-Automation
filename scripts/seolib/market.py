@@ -28,6 +28,48 @@ MARKET_WORDS = re.compile(r"\b(market|readers?|audience|customers?|users?|visito
                           r"targeting|target|aimed at|for people in|based in|in the)\b", re.I)
 
 
+# A page's scope: the country whose rules the calculation follows, or "global" (a calculation that is the same
+# everywhere, such as compound interest or an hourly wage). The locale is the spelling and the search market; the
+# scope decides which official sources apply and whether another country's facts are "foreign". Which countries
+# get their own page is decided when the calculator is built (add-calculator); this only reads what the page is.
+SCOPE_TERMS = {
+    "gb": r"\b(uk|u\.k\.|united kingdom|britain|british|england|english|scotland|scottish|wales|welsh|northern ireland|"
+          r"hmrc|paye|national insurance|stamp duty|sdlt|lbtt|ltt|council tax|isas?|lisa|help to buy|universal credit|"
+          r"state pension|nhs|let to buy)\b",
+    "us": r"\b(usa|u\.s\.a?\.?|united states|american|irs|401\s?\(?k\)?|roth ira|fha|va loan|medicare|social security|"
+          r"fica|w-?2|w-?4)\b",
+    "ca": r"\b(canada|canadian|cra|rrsp|tfsa|cpp)\b",
+    "au": r"\b(australia|australian|ato|superannuation)\b",
+    "ie": r"\b(ireland|irish|revenue\.ie|usc|prsi)\b",
+    "nz": r"\b(new zealand|kiwisaver|ird)\b",
+    "in": r"\b(india|indian|gst india|epf|ppf|sbi)\b",
+}
+
+
+def infer_scope(brief: dict) -> str:
+    """The brief's `scope:` when set; else a country named (or only found) in the query or H1; else the client's
+    `default_scope` (Calculators Site serves the world: "global"); else the market of its locale (a UK shop's pages
+    are UK pages)."""
+    if brief.get("scope"):
+        return str(brief["scope"]).lower()
+    text = " ".join(str(brief.get(k) or "") for k in ("target_query", "h1")).lower()
+    hits = [c for c, rx in SCOPE_TERMS.items() if re.search(rx, text, re.I)]
+    if len(hits) == 1:
+        return hits[0]
+    if brief.get("default_scope"):
+        return str(brief["default_scope"]).lower()
+    region = (brief.get("locale") or "").partition("-")[2].lower()
+    return {"uk": "gb"}.get(region, region) or "global"
+
+
+def filter_locale(brief: dict) -> str:
+    """The locale the market filters use: the scope's country, or plain English (no market filter) for a global
+    page. A global page keeps every country's facts and examples."""
+    scope = infer_scope(brief)
+    lang = ((brief.get("locale") or "en").split("-")[0] or "en").lower()
+    return "en" if scope == "global" else f"{lang}-{scope.upper()}"
+
+
 def norm(locale: str) -> str:
     lang, _, region = (locale or "").replace("_", "-").partition("-")
     return lang.lower() + ("-" + region.upper() if region else "")

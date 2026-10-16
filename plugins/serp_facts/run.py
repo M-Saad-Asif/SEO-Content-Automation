@@ -38,6 +38,12 @@ PROMO = re.compile(r"(cookie|subscribe|newsletter|sign up|log ?in|shop now|buy n
                    r"this (quick |short |handy )?(diy )?(guide|article|post|video)|</?[a-z]+>|click & collect)", re.I)
 ANAPHOR = re.compile(r"^(this|that|these|those|it|they|such|in this case|if so|otherwise|here)\b", re.I)
 SELF = re.compile(r"\b(we|our|us|i|my|me)\b", re.I)  # a competitor's claims about itself are not facts about the topic
+# ...nor are its sentences about its own tool, site or process ("The tool is one of five calculators…", "the calculator
+# above", "An eligibility check takes 10 minutes", "Market introduces customers to…")
+TOOL_SELF = re.compile(r"(?i)\b(this|the) (calculator|tool|page|site|website|app|checker|form)\b(?! (you|your|will|can) )|"
+                       r"\b(calculators?|tools?) (above|below|on this)\b|\b(click|tap|press|select) (the|on|below|here)\b|"
+                       r"\bintroduces? customers\b|\beligibility check\b|\bapplicant portal\b|\bonline banking\b|"
+                       r"\bone of (our|five|four|three|several) (calculators|tools)\b")
 VERB = re.compile(r"\b(is|are|was|were|be|been|has|have|had|do|does|can|could|will|would|should|must|may|might|need|"
                   r"needs|take|takes|cost|costs|\w+s|\w+ed)\b", re.I)
 
@@ -121,8 +127,9 @@ def run(ctx):
     if not pages:
         return {"facts_added": 0, "summary": "no readable ranking pages: nothing to validate against"}
     syn = ctx.brief.get("synonyms") or {}
-    loc = (ctx.brief.get("locale") or "en").split("-")[-1].lower()
-    home = "geo:" + {"uk": "gb"}.get(loc, loc)
+    from seolib.market import filter_locale
+    loc = filter_locale(ctx.brief).partition("-")[2].lower()  # "" on a global page: every country's facts count
+    home = ("geo:" + {"uk": "gb"}.get(loc, loc)) if loc else ""
     qt = toks(ctx.brief.get("target_query", "") + " " + " ".join(f"{k} {v}" for k, v in syn.items()))
     topic = set(qt)
     for e in (sem.get("must_cover_entities") or [])[:25]:
@@ -131,7 +138,7 @@ def run(ctx):
         topic |= toks(t.get("topic", ""))
 
     from seolib.graph import foreign as _foreign, market_of
-    hgeo, hcur = market_of(ctx.brief.get("locale") or "en")
+    hgeo, hcur = market_of(filter_locale(ctx.brief))
 
     def foreign_units(s):
         if hgeo != "geo:us" and re.search(r"\b\d{2,3}\s?(°\s?)?F\b", s):
@@ -144,6 +151,8 @@ def run(ctx):
     cands = []
     for p in pages:
         last = ""
+        pg_root = (p.get("domain") or "").lower().removeprefix("www.").split(".")[0]
+        pg_root = pg_root if len(pg_root) > 3 else ""  # a sentence naming its own site is about that site
         for kind_, x, hdr in units_of(p):
             for s in ([x] if kind_ in ("row", "list") else sentences(x)):
                 s = " ".join(s.split())
@@ -153,11 +162,12 @@ def run(ctx):
                 n = len(s.split())
                 if not (6 <= n <= (70 if kind_ == "list" else 45)) or PROMO.search(s) or s.rstrip().endswith("?"):
                     continue
-                if SELF.search(s) or "..." in s or (kind_ == "p" and not VERB.search(s)):
+                own_brand = pg_root and re.search(rf"(?i)\b{re.escape(pg_root)}\b", s)
+                if SELF.search(s) or TOOL_SELF.search(s) or own_brand or "..." in s or (kind_ == "p" and not VERB.search(s)):
                     continue
                 if kind_ != "row" and " | " in s:
                     continue  # a page title or menu line ("How to Fix a Dripping Tap | Wickes"), not a statement
-                where = places(s) - {home}
+                where = (places(s) - {home}) if home else set()
                 if where:
                     continue  # names another country's body or rule ("the Australian Government…"): not this market's fact
                 if foreign_units(s):

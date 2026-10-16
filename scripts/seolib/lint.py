@@ -478,7 +478,7 @@ class Linter:
             soft = [f for f in hits if f not in hard]
             free = max(0, cap - len(hard))
             for f in hard:
-                f["reason"] += (" (12 or more words in a row: always rewritten)" if f.get("hard")
+                f["reason"] += (" (10 or more words in a row: always rewritten)" if f.get("hard")
                                 else " (the first sentence under a heading is the direct answer)")
             for f in soft[:free]:
                 f["severity"] = "warn"
@@ -520,9 +520,10 @@ class Linter:
     def r_voice(self):
         """The author's first-person view (2-3 passages, top and middle, no invented experience), information gain
         and the GEO evidence checks (citations, quotations): seolib/voice.py."""
-        from .voice import check, check_required
+        from .voice import check, check_required, check_sites
         check(self)
         check_required(self)
+        check_sites(self)
 
     def r_humanize(self):
         """What separates human from AI writing in the University of Maryland / Google DeepMind research
@@ -1763,7 +1764,7 @@ class Linter:
                 run = 7 + len(hit)
                 self.add("C03-copied-text", "block", b, s, f"copies a source word for word (\"{sorted(hit)[0]}…\", "
                          f"about {run} words)", "say it in your own words, or quote it and name the source")
-                if run >= 12:
+                if run >= 10:  # a sentence's worth of someone else's words: always rewritten
                     self.findings[-1]["hard"] = True
             elif own & auth and not ui.search(s):
                 self.add("C03-copied-text", "warn", b, s, "repeats an authority's wording without quotation marks",

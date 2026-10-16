@@ -39,8 +39,13 @@ def task_lines(brief: dict, R: str) -> list[str]:
     """The researchers' task: two at the same time, each with its own brief and file."""
     q, loc = brief.get("target_query"), brief.get("locale") or "en"
     client, ptype = brief.get("client"), brief.get("page_type") or "guide"
+    from .market import infer_scope
+    scope = infer_scope(brief)
+    where = ("global: the calculation is the same everywhere, so use the official sources and people of every "
+             "relevant country (the US, the UK, Canada, Europe), not one market" if scope == "global" else
+             f"{scope.upper()}: that country's rules, so use its official sources")
     common = [
-        f"Topic: \"{q}\" for {client} ({brief.get('domain')}), a {ptype} page, market {loc}.",
+        f"Topic: \"{q}\" for {client} ({brief.get('domain')}), a {ptype} page. Scope: {where}.",
         "Use your own web search and page reading (the tool's built-in search; never Serper, never a login, never "
         "Reddit, never a page that blocks you). At most 4 searches and 6 page reads; stop after about 2 minutes.",
         "Look past the first page of results for the exact query: page one is already covered.",
@@ -56,7 +61,8 @@ def task_lines(brief: dict, R: str) -> list[str]:
         "never a username",
         "  date: the year or date the page shows (blank if none)",
         "Never invent, merge or round a quote; skip anything you could not read yourself. Skip the client's own site, "
-        "shops selling the same thing, and anything an official body contradicts.",
+        "shops selling the same thing, other online calculator websites (never quote or name them), and anything an "
+        "official body contradicts. A bank's or a brand's own tool may be described, never linked.",
     ]
     return [
         f"Run folder: {R}",

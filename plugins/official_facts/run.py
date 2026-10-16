@@ -140,7 +140,10 @@ def run(ctx):
     # from a hand-made topic list.
     asked = [q] + serp.get("paa", []) + serp.get("question_autocomplete", [])[:6] + serp.get("related", [])[:6]
     qt = set().union(*(toks(x) for x in asked))
-    region = (ctx.brief.get("locale") or "en").partition("-")[2].lower()
+    from seolib.market import filter_locale
+    region = filter_locale(ctx.brief).partition("-")[2].lower()  # "" on a global page
+    # a global page: the official sources of every priority market (US, UK, Canada, the EU), not one country's
+    regions = [region] if region else ["us", "gb", "ca", "eu"]
     client = ctx.brief["domain"].replace("www.", "")
     proper = {p.lower() for p in ctx.brief.get("proper_nouns") or []}
     cands, searched = [], set()
@@ -164,7 +167,7 @@ def run(ctx):
     # Is this a topic an authority rules on? Ask the data: authorities in the SERP or in Google's answers,
     # or a YMYL brief. Then search the authorities that showed up, or the government of the place the query names.
     seen_gov = {domain(u) for u in cands if kind(u) == "government"}
-    if not (ctx.brief.get("ymyl") is True or seen_gov) and GOV_SITES.get(region):
+    if not (ctx.brief.get("ymyl") is True or seen_gov) and any(GOV_SITES.get(r) for r in regions):
         # nothing official ranked and the topic is not money, health, legal or safety: no paid search (it found
         # nothing usable for "how to unblock a sink"); the run's last credit goes to the client's own pages instead
         ctx.decide("No authority ranks for this query and it is not a YMYL topic: no official-source search; "
@@ -174,11 +177,12 @@ def run(ctx):
         # the sector's own regulators first: a lending question goes to the FCA and MoneyHelper
         for sector, rx in SECTOR_WORDS.items():
             if re.search(rx, q, re.I):
-                for s in SECTOR_SITES.get(region, {}).get(sector, []):
-                    if s not in sites:
-                        sites.append(s)
+                for r in regions:  # one regulator per market on a global page
+                    for s in SECTOR_SITES.get(r, {}).get(sector, [])[:1 if len(regions) > 1 else 9]:
+                        if s not in sites:
+                            sites.append(s)
                 break
-        for code in [p[4:] for p in sorted(places(q))] + [region]:
+        for code in [p[4:] for p in sorted(places(q))] + regions:
             for site in GOV_SITES.get(code, []):
                 if not any(s.endswith(site) for s in sites):
                     sites.append(site)

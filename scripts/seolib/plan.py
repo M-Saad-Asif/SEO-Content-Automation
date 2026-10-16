@@ -34,7 +34,14 @@ BOILER = re.compile(
     r"testimonials?|categories|tags|archives?|table of contents|contents|in this (article|guide|post)|"
     r"related searches|people also ask|shop (now|the range|all)|our (services|products|range)|why choose us|"
     r"disclaimer|sources|references|faqs?|frequently asked questions|video|watch( the video)?|summary|conclusion|"
-    r"introduction|overview|final thoughts|key takeaways)\b")
+    r"introduction|overview|final thoughts|key takeaways|good to know|need (some )?help|for example|"
+    r"already started an application|more information|useful links|let'?s take a closer look|"
+    r"important( \w+)? information|(\w+ )?tools and resources|applies to (england|scotland|wales|"
+    r"northern ireland|the uk))\b")
+# A form's label, not a section: an empty slot where the tool puts a number ("…an hourly wage of £ and hours per
+# week"), or the form talking to the user ("I want to see…", "Which of the below…")
+PLACEHOLDER = re.compile(r"(?i)[£$€₹]\s+(and|or|per|for|\W|$)|\bof £?\s*and\b|^i want to\b|\bof the below\b|"
+                         r"\bbest describes\b|^are you a\b")
 
 
 # Headings that sell, invite or label a form, not a topic: "See how compound interest can make your savings glow",
@@ -67,6 +74,13 @@ def jac(a: set, b: set) -> float:
     return len(a & b) / len(a | b) if a | b else 0.0
 
 
+ACRONYMS = {w.lower(): w for w in ("UK", "US", "USA", "EU", "UAE", "ISA", "ISAs", "LISA", "APR", "AER", "LTV", "SDLT",
+                                       "LBTT", "LTT", "HMRC", "NHS", "VAT", "PAYE", "BMI", "IRS", "CRA", "RRSP", "TFSA",
+                                       "GDP", "RPI", "CPI", "ERC", "ERCs", "FCA", "PDF", "GBP", "USD", "EUR", "BTL")}
+# the same thing named three ways in search phrases: one word for the duplicate check
+SAME_WORD = {"house": "home", "property": "home", "flat": "home", "homes": "home", "properties": "home"}
+
+
 def sentence_case(h: str) -> str:
     """"How Long To Wait Before Painting" -> "How long to wait before painting"; acronyms and names stay."""
     h = re.sub(r"^\W+|\s+", " ", h or "").strip(" -–—:|")
@@ -76,6 +90,13 @@ def sentence_case(h: str) -> str:
         for j, x in enumerate(parts):
             if (i or j) and x[:1].isupper() and not x.isupper() and len(x) > 1 and not re.search(r"[A-Z]", x[1:]):
                 parts[j] = x[0].lower() + x[1:]
+            elif (i or j) and x == "A":
+                parts[j] = "a"  # "How to get A mortgage"
+            if x.lower() == "i":
+                parts[j] = "I"  # "Can i get…" from a search phrase
+            core = re.sub(r"\W", "", x).lower()
+            if core in ACRONYMS:
+                parts[j] = x.lower().replace(core, ACRONYMS[core])  # "…mortgage uk" -> "…mortgage UK"
         out.append("-".join(parts))
     s = " ".join(out)
     return s[:1].upper() + s[1:] if s else s
@@ -116,7 +137,8 @@ def build(rd: Path) -> dict:
     ptype = b.get("page_type") or "guide"
     main = words(query)
     from .graph import foreign, market_of
-    home_geo, home_cur = market_of(b.get("locale") or "en")
+    from .market import filter_locale
+    home_geo, home_cur = market_of(filter_locale(b))  # no market filter on a global page
     decision = {r["query"].lower(): r.get("decision") for r in qmap.get("queries", [])}
 
     def own(s):  # a heading's own words: the topic's words are in every heading and say nothing
@@ -153,7 +175,8 @@ def build(rd: Path) -> dict:
         for tag, text in cp["blocks"]:
             if tag in ("h2", "h3"):
                 ht = sentence_case(str(text))
-                if boiler(ht) or re.search(r"(?i)\b(questions|faqs?)$", ht) or foreign(ht, home_geo, home_cur):
+                if boiler(ht) or re.search(r"(?i)\b(questions|faqs?)$", ht) or foreign(ht, home_geo, home_cur) \
+                        or PLACEHOLDER.search(ht) or PITCH.search(ht):
                     cur = None  # furniture, or an FAQ block: its answers stay usable, not as a heading
                     continue
                 item = {"title": ht, "level": 2, "covers": [], "questions": [], "kind": "live", "sites": 0, "subs": []}
@@ -180,18 +203,24 @@ def build(rd: Path) -> dict:
                 C.save_json(rd / "fact_sheet.json", sh)
             sheet = C.load_json(rd / "fact_sheet.json") or sheet
 
+    def norm_w(s):  # a heading's own words, with one word for the same thing ("house", "property" -> "home")
+        return {SAME_WORD.get(w, w) for w in (own(s) or words(s))}
+
     def find_dup(title: str, pool=None):
-        t = own(title) or words(title)
+        t = norm_w(title)
+        # two questions are one heading at a lower bar ("…a second mortgage on another property?" and "…to buy
+        # another house?"); a topic heading needs more of its words shared
+        bar = 0.5 if is_question(title) else 0.6
         for h in (pool if pool is not None else heads):
             if not own(title) and not own(h["title"]):  # "How compound interest calculator" and "Compound interest
                 return h                                  # calculator" say nothing beyond the topic: one heading
-            if jac(t, own(h["title"]) or words(h["title"])) >= 0.6:
+            if jac(t, norm_w(h["title"])) >= bar:
                 return h
             for q in h["questions"]:
-                if jac(t, own(q) or words(q)) >= 0.6:
+                if jac(t, norm_w(q)) >= bar:
                     return h
             for x in h.get("subs", []):
-                if jac(t, own(x["title"]) or words(x["title"])) >= 0.6:
+                if jac(t, norm_w(x["title"])) >= bar:
                     return h
         return None
 
@@ -226,6 +255,10 @@ def build(rd: Path) -> dict:
             if q in h2q:
                 continue
             if is_question(q["q"]):
+                same = find_dup(q["q"])  # the same question asked another way, anywhere on the page
+                if same is not None and same is not sec:
+                    same["questions"].append(q["q"])
+                    continue
                 if not find_dup(q["q"], [sec] + sec["subs"]):
                     sec["subs"].append({"title": sentence_case(q["q"]), "level": 3, "covers": [], "questions": [],
                                         "kind": "question", "sites": q.get("competitors", 0), "subs": []})
@@ -510,10 +543,42 @@ def build(rd: Path) -> dict:
         chunk = heads[i * size:(i + 1) * size]
         if chunk:
             parts.append({"id": "ABC"[i], "headings": [h["title"] for h in chunk], "with_intro": i == 0})
+    meanings = mixed_meanings(rd, query, lm, out)
     plan = {"h1": b.get("h1") or sentence_case(query), "intro_words": 90, "headings": heads, "variants": variants,
+            "meanings": meanings,
             "parts": parts, "words": [lo, hi]}
     C.save_json(rd / "plan.json", plan)
     return plan
+
+
+def mixed_meanings(rd: Path, query: str, lm: dict, out: dict) -> list[dict]:
+    """When page one mixes several calculators or products for one query (an equity loan, Help to Buy, equity
+    release), Google is answering several needs at once. The client's own calculators for those other needs, with
+    the evidence that page one shows them: the page opens with a compact list (each term, what it is for, the link)."""
+    from .clientpages import slug_words, _shared
+    page = ((C.load_json(Path(rd) / "fact_sheet.json") or {}).get("brief") or {}).get("page_url") or ""
+    q = words(query) - {"calculator", "calculators", "calc", "uk", "online", "free", "tool"}
+    shown = [words(t) for s in out.get("sections", []) for t in (s.get("headings") or [s.get("title", "")])]
+    shown += [words(x) for x in out.get("single_site_angles", [])]
+    shown += [words(x.get("q", "")) for x in out.get("single_site_questions", []) + out.get("other_searches", [])]
+    titles = lm.get("client_titles") or {}
+    pool = list(dict.fromkeys((lm.get("client_candidates") or []) + [u for v in (lm.get("client_related") or {}).values()
+                                                                     for u in v]))
+    found = []
+    for u in pool:
+        if page and u.rstrip("/") == page.rstrip("/"):
+            continue
+        sw = slug_words(u)
+        if not re.search(r"calculat|checker|converter|estimator|planner", u, re.I) or not _shared(q, sw):
+            continue
+        own_w = sw - q - {"calculator", "calculators", "uk"}
+        if not own_w:
+            continue
+        evidence = sum(1 for s in shown if s and len(_shared(own_w, s)) >= max(1, len(own_w) // 2))
+        if evidence >= 3:  # several page-one sections or searches, not a passing mention
+            found.append({"title": titles.get(u) or " ".join(re.sub(r"[-_]+", " ", u.rstrip("/").rsplit("/", 1)[-1]).split()).capitalize(),
+                          "url": u, "evidence": evidence})
+    return sorted(found, key=lambda x: -x["evidence"])[:5]
 
 
 def section_depths(comp: dict) -> list[tuple[set, int, int]]:
@@ -620,6 +685,10 @@ def render(plan: dict, facts_by_id: dict) -> list[str]:
             u = (facts_by_id.get(i) or {}).get("source_url")
             if u:
                 link_at.setdefault(u, h["title"])
+    if plan.get("meanings"):
+        L.append("  Page one mixes several needs for this query. Open (right after the first answer) with a compact list: "
+                 "each term in one line, what it is and when to use it, with the link to our calculator for it; then "
+                 "cover them in the page: " + "; ".join(f"\"{m['title']}\" → {m['url']}" for m in plan["meanings"]))
     if plan.get("variants"):
         L.append("  Variants of the main query (answer them in one comparison table or list near the top whose first "
                  "column names the option, e.g. the frequency or the type, never the search (no \"What you searched\"); "

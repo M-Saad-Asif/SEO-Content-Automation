@@ -126,7 +126,14 @@ def lines(sheet: dict) -> list[str]:
                  "never stretch them):")
         L += [f"  - `offer:{i}` \"{x['text'][:220]}\" — {x['url']} — {x.get('scope') or 'only the product, market and conditions stated in this passage'}"
               for i, x in enumerate(o["offers"][:8], 1)]
-    if o.get("ctas"):
+    scope = (b.get("scope") or "").lower()
+    if scope == "global":
+        L.append("- Scope: **global**. The calculation is the same everywhere: write for readers in any country (the "
+                 "US, the UK, Canada, Europe…), with no \"UK\" framing; a rule that applies only in one country says which.")
+    elif scope:
+        L.append(f"- Scope: **{scope.upper()}**. The page follows that country's rules: say so where it matters, and use "
+                 "that country's official sources.")
+    if o.get("ctas") and pt != "tool":  # a tool page's next step is using the tool, never "get in touch"
         placement = ("link the most specific one near the top and again at the end" if commercial else
                      "use only where relevant to the reader's task; no compulsory opening or closing sales pitch")
         L.append(f"- {client}'s next steps (its own buttons; {placement}):")

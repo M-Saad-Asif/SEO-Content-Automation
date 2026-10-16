@@ -44,7 +44,8 @@ def run(ctx):
     previous = ctx.load("semantic_graph") or {}
     if not ctx.refresh and previous.get("input_digest") == digest:
         return previous
-    kg_full = G.build(pages, ctx.brief.get("target_query", ""), ctx.brief.get("locale") or "en", searches,
+    from seolib.market import filter_locale
+    kg_full = G.build(pages, ctx.brief.get("target_query", ""), filter_locale(ctx.brief), searches,
                       strict_market=strict)
     kg_full.pop("unnamed_figures", None)
     if not kg_full.get("spacy"):

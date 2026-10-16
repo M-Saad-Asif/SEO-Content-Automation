@@ -32,6 +32,8 @@ def note(sentence: str, n: int = 24) -> str:
     """A fact as a note: its figures, qualifiers and content words, in order ("full curing · up to week · most
     paints"), so the writer states it in its own sentence."""
     out, clause = [], []
+    sentence = re.sub(r"\[\s*([^\]]*?)\s*\]\([^)]*\)", r"\1", str(sentence or ""))  # buttons and links: their words only
+    sentence = re.sub(r"(?i)\s*\b(start now|apply now|find out more|learn more|read more)\b\s*$", "", sentence)
     for tok in re.findall(r"[£$€]?\d[\d,.]*\s?(?:%|cm|mm|m|kg|g|ml|l|°C|hours?|hrs?|days?|weeks?|months?|years?|"
                           r"minutes?|mins?)?|[A-Za-z][\w'-]*|[,;:()]", sentence or ""):
         if tok in ",;:()":

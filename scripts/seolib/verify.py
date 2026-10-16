@@ -20,7 +20,10 @@ SENSITIVE = re.compile(
     r"=|×|\^|÷|\b\d+(?:\.\d+)?\s?%|[£$€₹]\s?\d"                                   # maths, percentages, money
     r"|\d[^.]{0,40}\b(rate|interest|tax\w*|allowance|limit|dose|dosage|mg|years?|months?)\b"   # a figure with its unit
     r"|\b(rate|interest|tax\w*|allowance|limit|dose|dosage)\b[^.]{0,40}\d"
-    r"|\b(illegal|penalt\w*|deadline|must not|never (?:use|mix|take)|danger\w*|poison\w*)\b", re.I)  # rules and safety
+    r"|\b(illegal|penalt\w*|deadline|must not|never (?:use|mix|take)|danger\w*|poison\w*)\b"  # rules and safety
+    # a tax, benefit or legal rule stated without a number ("salary sacrifice saves National Insurance, not income tax")
+    r"|\b(tax\w*|national insurance|relief|allowance|benefit|entitle\w*|eligib\w*|exempt\w*|deductible|liable)\b"
+    r"[^.]{0,60}\b(only|not|no longer|rather than|instead of|cannot|can't|must|always|never|since|from)\b", re.I)
 
 
 def build_fast(rd: Path, cap: int = 15) -> int:
