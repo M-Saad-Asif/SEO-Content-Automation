@@ -142,8 +142,10 @@ def check(lint) -> None:
     if len(ext) < need:
         lint.add("G02-few-citations", "block", None, f"{len(ext)} outside source(s) cited, {len(avail)} available",
                  "cited sources raise a page's visibility in AI answers (GEO, up to 40%) and its trust",
-                 "link the source on the words a reader would check, where its fact is used: "
-                 + ", ".join(sorted(avail - ext)[:6]))
+                 "link the source on the words a reader would check, where its fact is used, with one of these exact "
+                 "addresses (never another page of the site): " + ", ".join(
+                     list(dict.fromkeys(f["source_url"] for f in facts if f.get("source_url")
+                                        and host(f["source_url"]) in (avail - ext)))[:6]))
     # quotation marks pair left to right ("REFUSED" … "ISSUED" are two short quotes, not one long one)
     quotes = [(b, q) for b in lint.blocks if b["type"] in ("p", "li")
               for m in re.finditer(r"\"([^\"]*)\"|“([^”]*)”", b["raw"]) for q in [m.group(1) or m.group(2) or ""]
@@ -155,6 +157,7 @@ def check(lint) -> None:
                  "quote the plan's quote fact word for word in quotation marks, name and link its source")
     values = [_norm(str(f.get("value") or "")) for f in facts]
     for b, q in quotes:
+        q = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", q)  # a link on the quoted words is not part of the quote
         nq = _norm(q)
         if q.rstrip().endswith("?"):
             continue  # a question people ask, not a source's words

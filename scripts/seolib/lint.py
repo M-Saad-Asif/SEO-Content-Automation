@@ -1324,7 +1324,10 @@ class Linter:
                          "section", "name the entity and the attribute the section covers (\"Drying time of oil-based "
                          "fence paint\"), or ask the reader's question")
             elif b["type"] == "h2" and not (
-                    t.endswith("?") or re.match(r"(how|which|what|when|where|why|who|can|do|does|is|are|should|will)\b", t, re.I)):
+                    t.endswith("?") or re.match(r"(how|which|what|when|where|why|who|can|do|does|is|are|should|will)\b", t, re.I)
+                    # a tool page's standard sections name exactly what they hold
+                    or re.match(r"(?i)(worked example|example calculation|the .{0,40} formula|inputs? (for|to)|"
+                                r"things to bear in mind|limitations)\b", t)):
                 # a statement heading is fine when it is entity-based: most of its words are the topic's entities and
                 # attributes ("Drying times by paint type"); otherwise it is a question or nothing (operator's rule)
                 hw = self._content_words(t)

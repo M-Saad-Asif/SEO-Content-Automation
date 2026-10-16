@@ -312,6 +312,9 @@ VALIDATE_ROUNDS = 3
 def _finding_lines(fs: list[dict], limit: int = 40) -> list[str]:
     out = []
     for f in fs[:limit]:
+        if isinstance(f, str):  # a planned heading the draft lacks
+            out.append(f"- [planned heading missing] {f}")
+            continue
         out.append(f"- [{f['rule']}] line {f.get('line')}: \"{(f.get('text') or '')[:160]}\"")
         out.append(f"    why: {f.get('reason')}" + (f"  fix: {f['fix']}" if f.get("fix") else ""))
     if len(fs) > limit:
@@ -319,7 +322,7 @@ def _finding_lines(fs: list[dict], limit: int = 40) -> list[str]:
     return out
 
 
-def _rounds(rd: Path, st: dict, key: str, cap: int, R: str, brief_path: str, left) -> bool:
+def _rounds(rd: Path, st: dict, key: str, cap: int, R: str, brief_path: str, left, announce: bool = True) -> bool:
     """Count fix rounds; after `cap` rounds stop the run with a clear verdict instead of looping."""
     import hashlib
     sig = hashlib.sha1((rd / "draft.md").read_bytes()).hexdigest()
@@ -331,6 +334,8 @@ def _rounds(rd: Path, st: dict, key: str, cap: int, R: str, brief_path: str, lef
         _save_state(rd, st)
     if st["rounds"][key] <= cap:
         return False
+    if not announce:
+        return True
     print(SEP)
     print(f"STOPPED: {key} still fails after {cap} fix rounds")
     print(SEP)
@@ -341,6 +346,58 @@ def _rounds(rd: Path, st: dict, key: str, cap: int, R: str, brief_path: str, lef
     print("\nStop here. Reply with STOPPED, the two paths and the blocking lines above, and nothing else.")
     print(f"(An operator can reset the counter with: {CMD()} done {ARG(brief_path)} retry)")
     return True
+
+
+# After the fix rounds, what is left is a note for the editor, not a failed run, unless it would mislead a reader:
+# a figure no fact carries, a misquote, claimed experience, a banned claim, a placeholder. Links the check refuses
+# (not in the link map, dead, redirecting) are unlinked by script; their words stay.
+CRITICAL = ("N01-untraced-number", "G04-misquote", "V03-claimed-experience", "C01-banned-claim", "C01-unapproved-claim",
+            "T01-placeholder", "N02-hardcoded-price")
+LINK_FIX = ("U01-url-not-in-link-map", "U02-redirecting-url", "U07-link-status", "U13-links-replaced-page",
+            "U15-tracking-parameter", "U03-product-to-collection")
+
+
+def unlink(md: str, urls) -> str:
+    import re
+    for u in urls:
+        md = re.sub(r"\[([^\]]+)\]\(" + re.escape(u) + r"\)", r"\1", md)
+    return md
+
+
+def _accept_leftovers(rd: Path, st: dict, R: str, brief_path: str) -> bool:
+    """True when the run must stop (an accuracy or honesty problem is left); otherwise the leftovers are recorded
+    as notes (st["accepted"]) and the run goes on to the fact-check and validation."""
+    import re
+    from .lint import lint_text, load_research
+    from .plan import check as plan_check
+    draft = rd / "draft.md"
+    md = draft.read_text(encoding="utf-8")
+    sheet, lm = C.load_json(rd / "fact_sheet.json"), C.load_json(rd / "link_map.json") or {}
+    res = lint_text(md, sheet, lm, load_research(rd))
+    bad = {u for f in res["findings"] if f["severity"] == "block" and f["rule"] in LINK_FIX
+           for u in re.findall(r"https?://[^\s)\"'\]]+", f.get("text") or "")}
+    if bad:
+        md = unlink(md, bad)
+        draft.write_text(md, encoding="utf-8")
+        res = lint_text(md, sheet, lm, load_research(rd))
+    left = [f for f in res["findings"] if f["severity"] == "block"]
+    critical = [f for f in left if f["rule"] in CRITICAL]
+    if critical:
+        print(SEP)
+        print(f"STOPPED: {len(critical)} line(s) could mislead a reader after the fix rounds")
+        print(SEP)
+        print(f"Draft:  {R}/draft.md")
+        print("\n".join(_finding_lines(critical)))
+        print("\nStop here. Reply with STOPPED, the draft path and the lines above, and nothing else.")
+        print(f"(An operator can reset the counter with: {CMD()} done {ARG(brief_path)} retry)")
+        return True
+    st["accepted"] = sorted({f["rule"] for f in left})
+    st["accepted_gaps"] = plan_check(rd, md)
+    _save_state(rd, st)
+    if left or st["accepted_gaps"] or bad:
+        print(f"Fix rounds used: {len(left)} small finding(s) and {len(st['accepted_gaps'])} heading gap(s) kept as notes "
+              f"in the report" + (f"; {len(bad)} refused link(s) unlinked" if bad else "") + ". Continuing.")
+    return False
 
 
 def _task(title: str, lines: list[str], brief_path: str, confirm: str | None = None, stage: str | None = None) -> None:
@@ -817,7 +874,8 @@ def _next_flow(brief: dict, brief_path: str, rd: Path, st: dict, R: str, mode: s
         st["done"]["check"] = st["done"].get("check") or C.now_iso()
         _save_state(rd, st)
         if blocks or gaps or checks:
-            if not first and _rounds(rd, st, "check", FIX_ROUNDS, R, brief_path, blocks or gaps):
+            capped = not first and _rounds(rd, st, "check", FIX_ROUNDS, R, brief_path, blocks or gaps, announce=False)
+            if capped and _accept_leftovers(rd, st, R, brief_path):
                 return
             lines = [f"Fix {R}/draft.md in place, in one pass. Edit only what is named here; never rewrite the page.", ""]
             if gaps:
@@ -830,8 +888,9 @@ def _next_flow(brief: dict, brief_path: str, rd: Path, st: dict, R: str, mode: s
                           "knowledge, your reasoning, or a fact the script missed). Change one only if it states something "
                           "no fact supports or misstates its fact (figure, group, condition, strength). A figure you worked "
                           "out from facts needs its inputs in the same paragraph.", ""] + checks
-            _task("FIX THE DRAFT (role: writer)", lines, brief_path)
-            return
+            if not capped:
+                _task("FIX THE DRAFT (role: writer)", lines, brief_path)
+                return
     # the fact-check pass: one sub-agent, only the lines where a mistake would hurt (maths, money, rates, health,
     # legal, safety), at most 15; most come back OK, and an all-OK answer is a finished check
     if not st["done"].get("verify"):
@@ -853,16 +912,21 @@ def _next_flow(brief: dict, brief_path: str, rd: Path, st: dict, R: str, mode: s
     draft_sig = hashlib.sha256(draft.read_bytes()).hexdigest()
     if not final.exists() or st.get("validated_draft") != draft_sig:
         from .validate import validate
-        ok, out = _quiet(validate, str(rd))
-        if not ok:
-            if _rounds(rd, st, "validate", FIX_ROUNDS, R, brief_path, out.strip()[-3500:]):
+        ok, out = _quiet(validate, str(rd), accepted=st.get("accepted"))
+        if not ok and _rounds(rd, st, "validate", FIX_ROUNDS, R, brief_path, out.strip()[-3500:], announce=False):
+            if _accept_leftovers(rd, st, R, brief_path):
                 return
+            ok, out = _quiet(validate, str(rd), accepted=st.get("accepted"))
+            if not ok:
+                _rounds(rd, st, "validate", FIX_ROUNDS, R, brief_path, out.strip()[-3500:])
+                return
+        if not ok:
             _task("FIX VALIDATION (role: writer)", [
                 f"Validation failed. Fix each blocking line below in {R}/draft.md and change nothing else:", "",
                 out.strip()[-3500:],
             ], brief_path)
             return
-        st["validated_draft"] = draft_sig
+        st["validated_draft"] = hashlib.sha256(draft.read_bytes()).hexdigest()  # unlinking may have changed it
         _save_state(rd, st)
     ft = final.read_text(encoding="utf-8")
     if ft.startswith("---\n") and "\nupdated:" not in ft.split("\n---", 1)[0]:

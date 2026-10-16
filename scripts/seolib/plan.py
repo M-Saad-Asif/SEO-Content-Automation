@@ -329,7 +329,8 @@ def build(rd: Path) -> dict:
                 dup["note"] = (dup.get("note", "") + " " + note).strip()
                 return
             heads.insert(len(heads) if at is None else at, {"title": title, "level": 2, "covers": [], "questions": [],
-                                                             "kind": "tool", "sites": 0, "subs": [], "note": note})
+                                                             "kind": "tool", "sites": 0, "subs": [], "note": note,
+                                                             "match": same})
         ensure(f"How to use the {name}", "each input the tool asks for, in its order on the page: what to enter and "
                "where to find it", at=0, same=r"(?i)\binputs?\b|\bhow to use\b|\busing the\b")
         fi = next((i for i, h in enumerate(heads) if re.search(r"(?i)formula|how .*calculat|method", h["title"])), None)
@@ -666,11 +667,14 @@ def render(plan: dict, facts_by_id: dict) -> list[str]:
 def check(rd: Path, md: str) -> list[str]:
     """Planned headings the draft doesn't have (by their words, so rephrasing is fine)."""
     plan = C.load_json(Path(rd) / "plan.json") or {}
-    have = [words(re.sub(r"^#+\s*", "", ln)) for ln in md.splitlines() if re.match(r"^#{2,4}\s", ln)]
+    titles = [re.sub(r"^#+\s*", "", ln) for ln in md.splitlines() if re.match(r"^#{2,4}\s", ln)]
+    have = [words(x) for x in titles]
     missing = []
     for h in plan.get("headings", []):
         for item in [h] + h.get("subs", []):
             t = words(item["title"])
+            if item.get("match") and any(re.search(item["match"], x) for x in titles):
+                continue  # a tool section the writer named its own way ("What does a let-to-buy example cost?")
             if t and not any(len(t & x) / len(t) >= 0.6 for x in have):
                 missing.append(("H2 " if item["level"] == 2 else "H3 ") + item["title"])
     return missing

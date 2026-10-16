@@ -105,7 +105,7 @@ def facts_used(md: str, sheet: dict) -> list[dict]:
     return used
 
 
-def validate(run_arg: str, refresh_links: bool = False) -> bool:
+def validate(run_arg: str, refresh_links: bool = False, accepted: list | None = None) -> bool:
     rd = resolve_run(run_arg)
     mark(rd, "validate", "start")
     sheet = C.load_json(rd / "fact_sheet.json")
@@ -120,6 +120,18 @@ def validate(run_arg: str, refresh_links: bool = False) -> bool:
         if l["severity"]:
             res["findings"].append({"id": f"K{len(res['findings']) + 1:03d}", "rule": "U07-link-status", "severity": l["severity"],
                                     "line": None, "section": None, "text": l["url"], "reason": l["verdict"], "fix": "use a URL that returns 200"})
+    if accepted is not None:  # after the fix rounds: dead links are unlinked, accepted leftovers become notes
+        from .driver import unlink
+        dead = [l["url"] for l in links if l["severity"] == "block"]
+        if dead:
+            md = unlink(md, dead)
+            draft.write_text(md, encoding="utf-8")
+            res = lint_text(md, sheet, lm, load_research(rd))
+            links = link_status(md, sheet, lm, refresh_links)
+        for f in res["findings"]:
+            if f["severity"] == "block" and f["rule"] in accepted:
+                f["severity"] = "warn"
+                f["reason"] += " (left after the fix rounds: a note for the editor)"
     blocks = [f for f in res["findings"] if f["severity"] == "block"]
     res["summary"]["block"] = len(blocks)
     res["summary"]["warn"] = sum(1 for f in res["findings"] if f["severity"] == "warn")
