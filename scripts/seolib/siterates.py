@@ -34,7 +34,7 @@ def load(dir_: str | Path) -> dict:
     """{module path: {export: value}} from the site's rate modules; {} when Node or the folder is missing."""
     node = shutil.which("node")
     d = Path(str(dir_)).expanduser()
-    if not node or not d.is_dir():
+    if not node or not d.exists():  # a folder of modules, or one module file
         return {}
     try:
         r = subprocess.run([node, "--no-warnings", str(READER), str(d)], capture_output=True, text=True,

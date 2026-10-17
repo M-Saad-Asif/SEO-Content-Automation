@@ -545,6 +545,7 @@ def build(rd: Path) -> dict:
             parts.append({"id": "ABC"[i], "headings": [h["title"] for h in chunk], "with_intro": i == 0})
     meanings = mixed_meanings(rd, query, lm, out)
     plan = {"h1": b.get("h1") or sentence_case(query), "intro_words": 90, "headings": heads, "variants": variants,
+            "voice": b.get("voice") or "",
             "meanings": meanings,
             "parts": parts, "words": [lo, hi]}
     C.save_json(rd / "plan.json", plan)
@@ -724,7 +725,12 @@ def render(plan: dict, facts_by_id: dict) -> list[str]:
             if h.get("quote"):
                 L.append(f"   quote: `{h['quote']}` — its exact words (section 3) in quotation marks, the source named "
                          "and linked in the same sentence")
-            if h.get("view"):
+            if h.get("view") and plan.get("voice") == "we":
+                L.append("   your view (the editorial desk's, \"we\", 2-4 sentences inside this section, not its first "
+                         "sentence): what we expect, believe or would bet on and why, from the facts and reports here, "
+                         "and what would change our mind. A real opinion, stated firmly; never a claim that we played, "
+                         "tested or saw anything beyond the published material")
+            elif h.get("view"):
                 L.append("   your view (first person \"I\", 2-4 sentences inside this section, not its first sentence): "
                          "what you'd pick or do and why, from the facts and experiences here, and when you'd choose "
                          "differently. A real opinion, stated firmly; never a claim that you used, tried or saw it")

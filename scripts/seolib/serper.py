@@ -18,13 +18,14 @@ CAP_PER_RUN = 3  # operator's limit: at most 3 paid searches a run (cached answe
 import threading  # noqa: E402
 
 _lock = threading.Lock()
-_budget = {"cap": None, "spent": 0, "refused": []}
+_budget = {"cap": None, "spent": 0, "refused": [], "ttl": TTL_SERP}
 
 
-def start_run(cap: int | None = CAP_PER_RUN) -> None:
-    """Called when a run's research starts: from here on, at most `cap` searches reach Serper."""
+def start_run(cap: int | None = CAP_PER_RUN, ttl_hours: float | None = None) -> None:
+    """Called when a run's research starts: from here on, at most `cap` searches reach Serper. A news page reuses a
+    cached answer for `ttl_hours` only (yesterday's results miss today's story)."""
     with _lock:
-        _budget.update(cap=cap, spent=0, refused=[])
+        _budget.update(cap=cap, spent=0, refused=[], ttl=ttl_hours * 3600 if ttl_hours else TTL_SERP)
 
 
 def spent() -> dict:
@@ -84,7 +85,7 @@ async def _call_once(client, kind: str, q: str, gl: str, hl: str, credits: list)
     key = f"serper|{kind}|{q.lower()}|{gl}|{hl}"
     cached = C.load_json(C._cache_path(key))
     import time
-    if cached and time.time() - cached.get("_ts", 0) < TTL_SERP:
+    if cached and time.time() - cached.get("_ts", 0) < _budget.get("ttl", TTL_SERP):
         cached["cached"] = True
         return cached
     if not _take(kind, q):

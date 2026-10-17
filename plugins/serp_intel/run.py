@@ -120,6 +120,9 @@ def run(ctx):
         organic.append({"position": o.get("position"), "link": link, "title": o.get("title"),
                         "snippet": o.get("snippet"), "date": o.get("date"), "kind": kind(link),
                         "shape": page_shape(link, o.get("title", "")), "domain": domain(link)})
+    # Google's Top stories: the news a searcher sees above the results (what a news page competes with today)
+    top_stories = [{"title": s.get("title"), "link": s.get("link"), "source": s.get("source"), "date": s.get("date"),
+                    "domain": domain(s.get("link") or "")} for s in main.get("topStories", [])[:10] if s.get("link")]
     paa = [p.get("question") for p in main.get("peopleAlsoAsk", []) if p.get("question")]
     paa_answers = {p.get("question"): {"snippet": p.get("snippet"), "link": p.get("link")}
                    for p in main.get("peopleAlsoAsk", [])}
@@ -253,7 +256,8 @@ def run(ctx):
     exp_paa = sum(len(v["paa"]) for v in expansions.values())
     return {
         "ymyl": b.get("ymyl") is True, "authority_results": authorities,
-        "query": q, "locale": b["locale"], "paa_locale": paa_locale, "organic": organic, "paa": paa, "paa_answers": paa_answers,
+        "query": q, "locale": b["locale"], "paa_locale": paa_locale, "organic": organic, "top_stories": top_stories,
+        "paa": paa, "paa_answers": paa_answers,
         "related": related, "autocomplete": auto, "question_autocomplete": question_ac[:12],
         "expansions": expansions, "features": features,
         "intent": intent, "format": {"dominant": fmt, "counts": dict(shapes)}, "composition": comp,

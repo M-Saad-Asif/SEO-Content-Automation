@@ -13,13 +13,16 @@ import yaml
 
 from . import common as C
 
-WORDS = {"tool": [600, 1400], "guide": [1000, 1600], "hub": [600, 900], "spoke": [800, 1300], "product-guide": [900, 1500],
+WORDS = {"news": [500, 1200], "tool": [600, 1400], "guide": [1000, 1600], "hub": [600, 900], "spoke": [800, 1300], "product-guide": [900, 1500],
          "service": [800, 1400], "location": [700, 1200], "product": [400, 900], "category": [300, 700],
          "home": [500, 1000], "company": [400, 800]}
 
 
 def default_page_url(profile: dict, page_type: str, slug: str) -> str:
     domain = profile["domain"]
+    from . import gaming
+    if gaming.on(profile):  # the site's own sections: /news/, /guides/, /cheats/, /tech/
+        return f"https://{domain}/{gaming.category(profile.get('target_query') or slug.replace('-', ' '), page_type)}/{slug}"
     paths = {"guide": profile.get("blog_path", "/blog/"), "spoke": profile.get("blog_path", "/blog/"),
              "product-guide": profile.get("blog_path", "/blog/"), "product": "/products/",
              "category": "/collections/" if profile.get("platform") == "shopify" else "/categories/"}
@@ -57,6 +60,9 @@ def make_brief(client: str, query: str, url: str | None = None, page_type: str |
     if page_type is None:
         page_type, _ = infer_type(instructions or "", query)
         page_type_source = "explicit" if explicit_type(instructions or "") else "keyword"
+    from . import gaming
+    if gaming.on(prof) and page_type_source != "explicit":
+        page_type = gaming.page_type(query, page_type)  # a gaming site has news and guides, no tools or services
     slug = slug or C.slugify(query)
     proposed = default_page_url(prof, page_type, slug)
     b = {k: v for k, v in prof.items() if k not in ("default_product_sources", "blog_path")}

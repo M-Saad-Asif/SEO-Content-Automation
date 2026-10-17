@@ -283,6 +283,12 @@ def _gate(step: str, rd: Path, text: str) -> list[str]:
     return out
 
 
+def _front_keys(brief: dict) -> str:
+    """The draft's front matter: a gaming site also takes its quick answer and tags."""
+    from . import gaming
+    return "title, meta_description, quick_answer, tags" if gaming.on(brief) else "title, meta_description"
+
+
 def _length_line(rd: Path) -> str:
     b = (C.load_json(rd / "fact_sheet.json") or {}).get("brief", {})
     eff, raw = b.get("word_range_effective"), b.get("word_range")
@@ -824,10 +830,10 @@ def _next_flow(brief: dict, brief_path: str, rd: Path, st: dict, R: str, mode: s
                     "- A tool without sub-agents (e.g. Windsurf): write the parts yourself, one after another.",
                     "",
                     "Instructions for the writer of part X:",
-                    f"1. Read RULES_CARD.md and {R}/write_brief.md: sections 1, 3, 4 (and 5 if it has one), and part X of section 2. "
+                    f"1. Read RULES_CARD.md and {R}/write_brief.md: sections 0 and 5 if it has them, 1, 3, 4, and part X of section 2. "
                     "Nothing else.",
                     f"2. Write {R}/draft_part_X.md with a single write: only part X's headings, in the plan's order (H2s "
-                    "and their H3s, Markdown only). Part A also starts with the front matter (title, meta_description), "
+                    f"and their H3s, Markdown only). Part A also starts with the front matter ({_front_keys(brief)}), "
                     "the H1 and the opening.",
                     "3. Each heading answers its question in its first one or two sentences; facts in your own words, "
                     "figures exactly as their notes give them; the links listed under a heading go in that section.",
@@ -841,7 +847,7 @@ def _next_flow(brief: dict, brief_path: str, rd: Path, st: dict, R: str, mode: s
         _task("DRAFT THE PAGE (role: writer)", [
             f"Run folder: {R}",
             f"1. Read RULES_CARD.md and {R}/write_brief.md. Nothing else.",
-            f"2. Write {R}/draft.md with a single write: front matter (title, meta_description), the H1, the opening, then "
+            f"2. Write {R}/draft.md with a single write: front matter ({_front_keys(brief)}), the H1, the opening, then "
             "every heading of the plan in its order. Markdown only.",
             "3. Each heading answers its question in its first one or two sentences; facts in your own words, figures "
             "exactly as their notes give them; the links listed under a heading go in that section.",
@@ -940,6 +946,13 @@ def _next_flow(brief: dict, brief_path: str, rd: Path, st: dict, R: str, mode: s
         build_schema(rd)  # JSON-LD naming the page's central entity and the entities it covers
     except Exception as e:  # structured data is a bonus; never fail a finished page on it
         print(f"note: schema.json not written ({e})")
+    site_file = None
+    if brief.get("site_export") and brief.get("site_repo"):
+        from .gaming import export as site_export
+        try:
+            site_file = site_export(rd, brief)  # the site's own article file, ready to commit
+        except Exception as e:  # the page is done either way; the file can be made again
+            print(f"note: the site's article file was not written ({type(e).__name__}: {e})")
     st["done"]["complete"] = C.now_iso()
     _save_state(rd, st)
     if brief.get("batch_plan"):
@@ -954,7 +967,9 @@ def _next_flow(brief: dict, brief_path: str, rd: Path, st: dict, R: str, mode: s
     print(f"Page:   {R}/final.md")
     print(f"Report: {R}/report.md")
     print(f"Scores sheet (for a reviewer): {R}/eval.md")
-    print("Stop here. Reply with these three paths and nothing else.")
+    if site_file:
+        print(f"Site file: {site_file.as_posix()}")
+    print("Stop here. Reply with these " + ("four" if site_file else "three") + " paths and nothing else.")
 
 
 def parse_request(text: str) -> dict:

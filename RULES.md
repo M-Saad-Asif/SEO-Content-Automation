@@ -185,3 +185,16 @@ AI answers (Google AI Overviews, ChatGPT, Perplexity, Gemini) quote passages, no
 ## 9. When facts are missing
 
 Never pause and never ask. Leave the claim out, or say plainly what the reader should check and link the authority (on a commercial page, without making that check the page's advice). The omission is logged in the report as a decision.
+
+## 10. Gaming pages (client profile `niche: gaming`; the write brief's section 0 overrides the rules card)
+
+Owner's rules of 17 Oct 2026 (first client gta6coverage.com), checked by `seolib/gaming.py`:
+- **Status first** (G10): the opening starts with the article's status in bold: **Official**, **Leak**, **Rumor**, **Insider report** or **Fan theory** (or "Official, with leaks"), then says what is confirmed and what is not.
+- **Every claim labelled** (G11): leaks, rumors, insider claims, press reports and what players say are all used, each with its label in its own sentence ("reportedly", "according to a leak", "IGN reports", "players on Reddit think"). Never a leak or rumor stated as fact or called confirmed. "Be certain" applies to official facts and the site's own records only.
+- **Who is named** (C05): the publisher and platform holders, the press (credited and linked for what they report) and public platforms (Reddit, X, YouTube; the platform, never a private user). GTA fan and coverage sites, and any site that is neither, are never named or linked: their claims are told as "a leak shared online".
+- **Titles** (G12, G13): for Google Discover and News: the game first, a concrete hook (name, date, number, thing shown), 55-70 characters, title case like the site's headlines. No "!", capitals or bait wording; a leak or rumor title carries its label.
+- **Front matter** (G14, G15): `quick_answer` (2-3 sentences, at most 60 words, with labels) and `tags`.
+- **Voice** (V04): the editorial desk's view, "we", 2-3 times; never "I", never a claim to have played or tested anything.
+- **The site's records**: database items named exactly as their records (the site links first mentions itself); a blank stat is "not announced". Cheat codes only from the facts, never older games' codes. Spoilers past the official trailers get a warning line.
+- Literal game words are not AI tells there ("unlock the Cheetah", "Secrets of Vice City").
+- Finished pages are written into the site's repository as `content/<news|guides|cheats|tech>/<slug>.md` with its own front matter.

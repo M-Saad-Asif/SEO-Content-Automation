@@ -140,6 +140,8 @@ def words(s: str) -> list[str]:
     return re.findall(r"[A-Za-z0-9£$€][A-Za-z0-9£$€%'’.\-]*", s)
 
 
+# words a game uses literally ("unlock the Cheetah", "secrets of Vice City"): not hype on a gaming page
+GAME_LITERAL = re.compile(r"(?i)(unlock(?:ing)?|secrets? (?:of|to))$")
 # Headings that name no subject: hype and filler a person who knows the topic doesn't write
 HYPE_HEADING = re.compile(
     r"(?i)\b(the ultimate|ultimate guide|new era|era of|journey|unlock(?:ing)?|secrets? (?:of|to)|deep dive|the power of|"
@@ -524,6 +526,9 @@ class Linter:
         check(self)
         check_required(self)
         check_sites(self)
+        from . import gaming
+        if gaming.on(self.b):
+            gaming.check(self)
 
     def r_humanize(self):
         """What separates human from AI writing in the University of Maryland / Google DeepMind research
@@ -808,9 +813,11 @@ class Linter:
     def r_lexicon(self):
         counts = Counter()
         extra = [x.lower() for x in (self.b.get("banned_phrases") or [])]
+        from . import gaming
+        allowed = {x.lower() for x in (self.b.get("allowed_phrases") or [])} | (gaming.ALLOWED if gaming.on(self.b) else set())
         for b, s in self.prose(include_cells=True, include_headings=True):
             t = unquote(s).lower()
-            for ph in self.lex.get("banned", []) + extra:
+            for ph in [x for x in self.lex.get("banned", []) + extra if x.lower() not in allowed]:
                 if re.search(rf"(?<![\w-]){re.escape(ph.lower())}(?![\w-])", t) and ph.lower() not in self.fact_text:
                     self.add("X01-banned-phrase", "block", b, s, f"banned phrase \"{ph}\"", "rewrite in plain words; state the fact or cut the sentence")
             for pat in self.lex.get("known_failures", []) + list(self.b.get("known_failures") or []):
@@ -1281,6 +1288,8 @@ class Linter:
 
     # 17 headings
     def r_headings(self):
+        from . import gaming
+        gaming_on = gaming.on(self.b)
         proper = set()
         for p in self.sheet.get("products", []):
             proper |= set(re.findall(r"[A-Z][\w'-]+", f"{p['display_name']} {p.get('vendor', '')}"))
@@ -1315,11 +1324,14 @@ class Linter:
                         geo |= set(span)
             elig = [w for w in ws if len(w) > 3 and w not in proper and w not in geo and not w.isupper()]
             caps = [w for w in elig if w[0].isupper()]
-            if len(caps) >= 2 and len(caps) >= 0.5 * max(1, len(elig)):
+            if len(caps) >= 2 and len(caps) >= 0.5 * max(1, len(elig)) and not (gaming_on and b["type"] == "h1"):
+                # (a gaming site's headline is in title case, like the news it sits beside)
                 self.add("H01-title-case", "block", b, t, "heading uses Title Case", "use sentence case: capitalise the first word and proper nouns only")
             if len(t) > 70:
                 self.add("H01-heading-length", "warn", b, t, f"heading is {len(t)} characters", "shorten to under about 70")
             m_hype = HYPE_HEADING.search(t)
+            if m_hype and gaming_on and GAME_LITERAL.match(m_hype.group(0)):
+                m_hype = None  # a game's own words: "How to unlock the Cheetah", "Secrets of Vice City"
             if m_hype:
                 self.add("H12-vague-heading", "block", b, t, f"\"{m_hype.group(0)}\" is filler, not the subject of the "
                          "section", "name the entity and the attribute the section covers (\"Drying time of oil-based "
@@ -1424,11 +1436,15 @@ class Linter:
                          "state the declaration or instruction first, then the condition (\"Do X if Y\")")
         # bold: at most one per section, never a whole sentence
         qwords = {w for w in re.findall(r"[a-z0-9]+", (self.b.get("target_query") or "").lower()) if w not in STOP}
+        from . import gaming
+        game_status = gaming.STATUS_LINE if gaming.on(self.b) else None
         for b in self.blocks:
             raw = b.get("raw", "")
             hwords = {w for w in re.findall(r"[a-z0-9]+", (b.get("section_title") or "").lower()) if w not in STOP}
             for m in re.finditer(r"\*\*([^*]+)\*\*", raw):
                 bw = {w for w in re.findall(r"[a-z0-9]+", m.group(1).lower()) if w not in STOP}
+                if game_status and game_status.match(m.group(1).strip()):
+                    continue  # a gaming page's status label ("**Leak:**") is the answer's status, not the search term
                 if bw and bw <= (qwords | hwords):
                     self.add("K05-bold-search-term", "block", b, m.group(1), "bolds the search term, not the answer "
                              "(Koray rule 13)", "bold the answer items instead, or no bold")
@@ -1504,14 +1520,20 @@ class Linter:
         """Koray's rules that a script can check (RULES.md section 7): be certain (2), facts not opinions (2),
         numbers and examples after plural nouns (4, 5, 7), no fluff (3), the same part of speech in lists (8), the
         source before the claim."""
+        from . import gaming
+        game = gaming.on(self.b)
+        we = str(self.b.get("voice") or "").lower() == "we"
+        LABEL_WORDS = list(gaming.LABELS.values()) if game else []
         for b, s in self.prose():
             plain = re.sub(r"[\"“][^\"”]*[\"”]", " ", s)  # quoted words are the source's, not the page's
             m = self.HEDGE.search(plain)
+            if m and game and any(x.search(plain) for x in LABEL_WORDS):
+                m = None  # "the trailer reportedly shows…": on a gaming page the hedge is the claim's label
             if m:
                 self.add("K10-hedge", "block", b, s, f"\"{m.group(0)}\" hedges (Koray rule 2: be certain)",
                          "state it as a fact with its condition, or as an instruction (\"Do X if Y\")")
             m = self.OPINION.search(plain)
-            if m and not re.match(r"(?i)(i\b|i'd\b|in my\b)", m.group(0)):  # the author's own view is allowed (voice.py)
+            if m and not re.match(r"(?i)(i\b|i'd\b|in my\b)" + (r"|we\b|we'd\b|in our\b" if we else ""), m.group(0)):  # the author's own view is allowed (voice.py)
                 self.add("K11-opinion", "block", b, s, f"\"{m.group(0)}\" is opinion phrasing (Koray rule 2)",
                          "state the decision rule as a fact: \"<option> suits <case>\"")
             m = self.VAGUE.search(plain)

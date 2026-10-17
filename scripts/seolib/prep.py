@@ -85,7 +85,12 @@ def load_brief(path: str | Path) -> dict:
     b.setdefault("vertical_checks", [])
     b.setdefault("hardcode_prices", False)
     from .market import infer_scope
-    b["scope"] = infer_scope(b)  # "global" or the country whose rules the page follows
+    b["scope"] = infer_scope(b)
+    from . import gaming
+    if gaming.on(b):
+        if b.get("page_type_source") != "explicit":
+            b["page_type"] = gaming.page_type(b.get("target_query") or "", b.get("page_type") or "guide")
+        b["site_category"] = gaming.category(b.get("target_query"), b.get("page_type"), str(b.get("site_category") or ""))  # "global" or the country whose rules the page follows
     return b
 
 
@@ -547,6 +552,13 @@ def prep(brief_path: str, refresh: bool = False, quiet: bool = False, timing: bo
         facts += rates
         if not quiet:
             print(f"  site rates data: {len(rates)} fact(s) for this page")
+    if brief.get("site_repo") and brief.get("site_data_files"):
+        from .gaming import record_facts  # the site's own records (a game database, named places)
+        strong = " ".join(str(x) for x in (brief.get("target_query"), page_info.get("title"), page_info.get("h1")) if x)
+        recs = record_facts(brief, strong, page.get("text", "") if page_info.get("exists") else "")
+        facts += recs
+        if not quiet:
+            print(f"  site records: {len(recs)} fact(s) for this page")
     site_text =" ".join([page.get("text", "")] + [(r2.get(p["url"]) or {}).get("text", "") for p in products]
                          + [(r1.get(u) or {}).get("text", "") for u in claim_pages])
     claims = []
@@ -709,7 +721,7 @@ def prep(brief_path: str, refresh: bool = False, quiet: bool = False, timing: bo
                                              "target_query", "search_intent", "word_range", "ymyl", "mode",
                                              "hardcode_prices", "h1", "single_brand", "banned_phrases", "proper_nouns",
                                              "link_context_bans", "secondary_queries", "notes", "synonyms",
-                                             "reader_nouns", "known_failures", "internal_codes", "banned_claims", "author", "experience", "task", "scope", "competitor_sites", "default_scope",
+                                             "reader_nouns", "known_failures", "internal_codes", "banned_claims", "author", "experience", "task", "scope", "competitor_sites", "default_scope", "niche", "voice", "site_category", "press_sites", "official_sites",
                                              "instructions", "page_type_source", "word_range_source", "page_url_source", "conversion_targets",
                                              "source_context", "site_inventory", "research_format", "batch_plan", "batch_item")},
         "generated_at": C.now_iso(),

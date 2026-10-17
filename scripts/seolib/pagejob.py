@@ -105,7 +105,18 @@ def lines(sheet: dict) -> list[str]:
     o = offer(sheet)
     commercial = pt in COMMERCIAL
     L = ["", "## Page job (read this first: it decides what the page is for and how it is built)"]
-    if pt == "tool":
+    from . import gaming
+    game = gaming.on(b)
+    if game and pt == "news":
+        L.append(f"- This is a **news article** on {client}, an independent fan and editorial site about the game. Lead "
+                 "with the newest development and its status (official, leak, rumor, insider report), then what is "
+                 "confirmed and what is not, what it means for players, and what comes next (dates, the next "
+                 "announcement). No sales pitch and no call to action.")
+    elif game:
+        L.append(f"- This is a **{pt}** on {client}, an independent fan and editorial site about the game: answer the "
+                 "question fully, keeping what is confirmed apart from what is reported, leaked or not announced. No "
+                 "sales pitch and no call to action.")
+    elif pt == "tool":
         L.append(f"- This is a **tool page** of {client}: the tool itself (\"{b.get('target_query')}\") is on the "
                  "page, above the text. The text helps the reader use it and trust its result: what it works out, each "
                  "input in the order the tool asks for it, the method or formula behind it (written out), a worked "
@@ -127,13 +138,16 @@ def lines(sheet: dict) -> list[str]:
         L += [f"  - `offer:{i}` \"{x['text'][:220]}\" — {x['url']} — {x.get('scope') or 'only the product, market and conditions stated in this passage'}"
               for i, x in enumerate(o["offers"][:8], 1)]
     scope = (b.get("scope") or "").lower()
-    if scope == "global":
+    if scope == "global" and game:
+        L.append("- Scope: **global**. One game, one story for players everywhere; a price, edition, launch time or "
+                 "rating that differs by region names its region.")
+    elif scope == "global":
         L.append("- Scope: **global**. The calculation is the same everywhere: write for readers in any country (the "
                  "US, the UK, Canada, Europe…), with no \"UK\" framing; a rule that applies only in one country says which.")
     elif scope:
         L.append(f"- Scope: **{scope.upper()}**. The page follows that country's rules: say so where it matters, and use "
                  "that country's official sources.")
-    if o.get("ctas") and pt != "tool":  # a tool page's next step is using the tool, never "get in touch"
+    if o.get("ctas") and pt != "tool" and not game:  # a tool page's next step is using the tool, never "get in touch"
         placement = ("link the most specific one near the top and again at the end" if commercial else
                      "use only where relevant to the reader's task; no compulsory opening or closing sales pitch")
         L.append(f"- {client}'s next steps (its own buttons; {placement}):")

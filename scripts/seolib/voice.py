@@ -24,6 +24,15 @@ EXPERIENCE = re.compile(
     r"\bI (?:found|noticed|learned|discovered) (?:that |when |it )?")
 
 
+# the editorial desk's view (client profile `voice: we`): "we think", "we'd bet", "our read is"; "we will update this
+# page" is a promise, not a view
+FIRST_WE = re.compile(r"\b[Ww]e(?:'d| would| think| believe| expect| suspect| reckon| doubt| prefer| recommend| bet| "
+                      r"wouldn't| lean| like| love| want| hope| worry| find| read| see)\b|\b[Oo]ur (?:view|take|read|pick|"
+                      r"guess|bet|money|hunch|sense|reading|verdict)\b|\b[Ii]n our (?:view|opinion)\b")
+EXPERIENCE_WE = re.compile(r"\b[Ww]e(?:'ve| have)? (?:played|tried|tested|used|bought|owned|finished|completed|beat|"
+                           r"benchmarked|ran|run|spent \d+ hours)\b|\b[Ii]n our (?:experience|testing|playthrough|hands-on)\b|"
+                           r"\b[Ww]hen we (?:played|tried|tested|ran)\b|\b[Oo]ur (?:playthrough|testing|hands-on|benchmarks?)\b")
+
 CALC_SITE = re.compile(r"(?i)calc|convert")
 
 
@@ -33,9 +42,17 @@ def check_sites(lint) -> None:
     client = re.sub(r"^www\.", "", (lint.b.get("domain") or "").lower()).split("/")[0]
     rivals = {re.sub(r"^www\.", "", str(d).lower()) for d in (lint.b.get("competitor_sites") or [])}
     serp = (lint.research.get("serp_intel") or {}).get("organic") or []
-    rivals |= {re.sub(r"^www\.", "", o.get("domain", "")) for o in serp if CALC_SITE.search(o.get("domain", ""))}
+    from . import gaming
+    game = gaming.on(lint.b)
+    if game:  # gaming: fan and coverage sites (anything not official, press or a public platform) are never named
+        stories = (lint.research.get("serp_intel") or {}).get("top_stories") or []
+        rivals |= {gaming.host(o.get("link") or o.get("domain") or "") for o in serp + stories
+                   if gaming.kind(o.get("link") or o.get("domain") or "", lint.b) == "rival"}
+    else:
+        rivals |= {re.sub(r"^www\.", "", o.get("domain", "")) for o in serp if CALC_SITE.search(o.get("domain", ""))}
     rivals.discard(client)
     rivals.discard("")
+    rule, what = ("C05-fan-site", "a GTA fan or coverage site") if game else ("C04-calculator-site", "another online calculator website")
     page = (lint.b.get("page_url") or "").rstrip("/")
     for b in lint.blocks:
         raw = b.get("raw") or b["text"]
@@ -43,14 +60,16 @@ def check_sites(lint) -> None:
             host = re.sub(r"^www\.", "", u.split("/")[2].lower())
             if page and u.rstrip("/") == page:
                 lint.add("U25-self-link", "block", b, u, "the page links to itself", "drop the link; keep the words")
-            elif any(host == r or host.endswith("." + r) for r in rivals):
-                lint.add("C04-calculator-site", "block", b, u, "a link to another online calculator website",
-                         "drop the link and the site's name; state the point in your own words")
+            elif any(host == r or host.endswith("." + r) for r in rivals) or (game and gaming.kind(host, lint.b) == "rival"):
+                lint.add(rule, "block", b, u, f"a link to {what}",
+                         "drop the link and the site's name; credit the press report of it, or say \"a leak shared online\""
+                         if game else "drop the link and the site's name; state the point in your own words")
         for r in rivals:
             name = r.split(".")[0]
             if len(name) > 4 and re.search(rf"(?i)\b{re.escape(name)}\b|\b{re.escape(r)}\b", re.sub(r"\]\([^)]*\)", "]", raw)):
-                lint.add("C04-calculator-site", "block", b, b["text"][:140], f"names another online calculator website "
-                         f"({r})", "never name other calculator sites; state the point in your own words")
+                lint.add(rule, "block", b, b["text"][:140], f"names {what} ({r})",
+                         "never name it; credit the press report of the claim, or say \"a leak shared online\""
+                         if game else "never name other calculator sites; state the point in your own words")
 
 
 def check_required(lint) -> None:
@@ -93,8 +112,8 @@ def _words(s: str) -> set[str]:
     return _content(s)
 
 
-def is_view(text: str) -> bool:
-    return bool(FIRST.search(_unq(text)))
+def is_view(text: str, we: bool = False) -> bool:
+    return bool((FIRST_WE if we else FIRST).search(_unq(text)))
 
 
 def check(lint) -> None:
@@ -103,6 +122,8 @@ def check(lint) -> None:
     total = sum(s for b, s in zip(body, sizes) if b["type"] in ("p", "li", "tr")) or 1
     notes = lint.b.get("experience") or []
     notes = [_words(x) for x in (notes if isinstance(notes, list) else [notes]) if str(x).strip()]
+    we = str(lint.b.get("voice") or "").lower() == "we"
+    person = "the editorial desk's view (\"we\")" if we else "the first person"
 
     # 1. the author's view: how many, where, and no invented experience
     passages, pos, first_h2, last_h2_at, prev_view = [], 0, None, None, False
@@ -110,7 +131,10 @@ def check(lint) -> None:
         if b["type"] == "h2":
             first_h2 = pos if first_h2 is None else first_h2
             last_h2_at = pos
-        if b["type"] in ("p", "li") and is_view(b["text"]):
+        if we and b["type"] in ("p", "li") and FIRST.search(_unq(b["text"])) and not FIRST_WE.search(_unq(b["text"])):
+            lint.add("V04-desk-voice", "block", b, b["text"][:160], "\"I\" on a page the editorial desk signs",
+                     "write the view as the desk's: \"we think…\", \"our read is…\"")
+        if b["type"] in ("p", "li") and is_view(b["text"], we):
             if not (prev_view and b["type"] == "li"):
                 passages.append((b, pos))
             prev_view = True
@@ -119,7 +143,7 @@ def check(lint) -> None:
         if b["type"] in ("p", "li", "tr"):
             pos += n
         for s in re.split(r"(?<=[.!?])\s+", _unq(b["text"])) if b["type"] in ("p", "li") else []:
-            m = EXPERIENCE.search(s)
+            m = EXPERIENCE.search(s) or (EXPERIENCE_WE.search(s) if we else None)
             if m and not any(len(_words(s) & nw) / max(1, len(_words(s))) >= 0.4 for nw in notes):
                 lint.add("V03-claimed-experience", "block", b, s, f"\"{m.group(0).strip()}\" claims first-hand "
                          "experience the page doesn't have (FTC rules on misrepresented experience; Google's trust "
@@ -127,9 +151,9 @@ def check(lint) -> None:
                          "attribute the experience to the person it came from")
     lo = 1 if total < 800 else 2
     if len(passages) < lo:
-        lint.add("V01-author-view-count", "block", None, f"{len(passages)} first-person passage(s)",
+        lint.add("V01-author-view-count", "block", None, f"{len(passages)} view passage(s) in {person}",
                  f"the page gives no author's view (every page needs {lo}-3)", "where the plan says \"your view\", "
-                 "add 2-4 sentences in the first person: what you'd pick or do and why, and when you'd choose otherwise")
+                 f"add 2-4 sentences in {person}: what you'd pick, expect or do and why, and when you'd think otherwise")
     elif len(passages) > 3:
         for b, _ in passages[3:]:
             lint.add("V01-author-view-count", "block", b, b["text"][:160], f"{len(passages)} first-person passages; "

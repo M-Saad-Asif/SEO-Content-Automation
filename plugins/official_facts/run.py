@@ -167,12 +167,32 @@ def run(ctx):
     # Is this a topic an authority rules on? Ask the data: authorities in the SERP or in Google's answers,
     # or a YMYL brief. Then search the authorities that showed up, or the government of the place the query names.
     seen_gov = {domain(u) for u in cands if kind(u) == "government"}
-    if not (ctx.brief.get("ymyl") is True or seen_gov) and any(GOV_SITES.get(r) for r in regions):
+    from seolib import gaming
+    game = gaming.on(ctx.brief)
+    if game:
+        # a game's authorities are its publisher and platform holders: their pages ranking here, the profile's
+        # standing pages (the game's official site), and one search across them for this topic
+        for o in serp.get("organic", []) + (serp.get("top_stories") or []):
+            if gaming.kind(o.get("link") or "", ctx.brief) == "official":
+                add(o["link"])
+        for u in ctx.brief.get("official_pages") or []:
+            add(u)
+        sites = list(dict.fromkeys([gaming.host(s) for s in ctx.brief.get("official_sites") or []]
+                                   + ["rockstargames.com", "take2games.com", "playstation.com", "xbox.com"]))[:4]
+        res, cr = serper.batch([("search", f"{q} (" + " OR ".join(f"site:{s}" for s in sites) + ")")], ctx.brief["locale"])
+        ctx.credits += cr
+        for r in res.values():
+            for o in r.get("organic", [])[:6]:
+                if o.get("link") and gaming.kind(o["link"], ctx.brief) == "official":
+                    add(o["link"], True)
+        ctx.decide(f"Gaming page: official facts from the publisher and platform holders ({', '.join(sites)}); "
+                   "leaks, rumors and reports come from page one and the researchers, each with its label.")
+    elif not (ctx.brief.get("ymyl") is True or seen_gov) and any(GOV_SITES.get(r) for r in regions):
         # nothing official ranked and the topic is not money, health, legal or safety: no paid search (it found
         # nothing usable for "how to unblock a sink"); the run's last credit goes to the client's own pages instead
         ctx.decide("No authority ranks for this query and it is not a YMYL topic: no official-source search; "
                    "authority facts come from the page-one results and the researchers.")
-    if ctx.brief.get("ymyl") is True or seen_gov:
+    if not game and (ctx.brief.get("ymyl") is True or seen_gov):
         sites = sorted(seen_gov)[:2]
         # the sector's own regulators first: a lending question goes to the FCA and MoneyHelper
         for sector, rx in SECTOR_WORDS.items():

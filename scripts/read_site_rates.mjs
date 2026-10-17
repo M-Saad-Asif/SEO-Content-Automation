@@ -5,7 +5,7 @@ import { readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { pathToFileURL } from "node:url";
 
-const root = process.argv[2];
+const arg = process.argv[2];
 const files = [];
 const walk = (d) => {
   for (const f of readdirSync(d)) {
@@ -14,7 +14,11 @@ const walk = (d) => {
     else if (/\.(ts|mts|js|mjs)$/.test(f) && !/\.(test|spec|d)\.[mc]?[tj]s$/.test(f)) files.push(p);
   }
 };
-walk(root);
+// a folder of modules, or one module (its key is then its file name)
+const one = statSync(arg).isFile();
+const root = one ? join(arg, "..") : arg;
+if (one) files.push(arg);
+else walk(root);
 const out = {};
 for (const f of files) {
   const key = relative(root, f).split("\\").join("/");

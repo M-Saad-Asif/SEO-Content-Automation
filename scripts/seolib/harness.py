@@ -97,7 +97,8 @@ def run_research(brief_path: str, mode: str = "deep", refresh: bool = False, mar
     if mark_start:  # a background run was marked by `next` when it started it
         mark(rd, "prep", "start", fresh=True)
     from . import serper
-    serper.start_run()  # at most 3 paid searches this run (seolib/serper.py); cached answers are free
+    # at most 3 paid searches this run (seolib/serper.py); cached answers are free, for 6 hours on a news page
+    serper.start_run(ttl_hours=6 if brief.get("page_type") == "news" else None)
     ctx = Ctx(brief, rd, mode, refresh)
     ms = {n: m for n, m in manifests().items() if applies(m, brief, mode)}
     done, times = _run_waves(ms, ctx)

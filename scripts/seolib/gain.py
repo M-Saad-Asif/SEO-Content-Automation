@@ -24,7 +24,8 @@ from pathlib import Path
 
 from . import common as C
 
-KINDS = ("experience", "opinion", "data", "change", "mistake", "cost")
+KINDS = ("experience", "opinion", "data", "change", "mistake", "cost",
+         "official", "leak", "rumor", "insider", "report", "reaction")  # the last six: gaming pages
 STOP = set("a an the and or but of to in on at by for with from into is are was were be been it its this that these "
            "those you your we our they their i my me he she his her can could will would should may might must do does "
            "did have has had not no so if as than then there here which who what when where why how very just also more "
@@ -64,6 +65,9 @@ def task_lines(brief: dict, R: str) -> list[str]:
         "shops selling the same thing, other online calculator websites (never quote or name them), and anything an "
         "official body contradicts. A bank's or a brand's own tool may be described, never linked.",
     ]
+    from . import gaming
+    if gaming.on(brief):
+        return _gaming_lines(brief, R)
     return [
         f"Run folder: {R}",
         "The research scripts are running in the background (about a minute). Meanwhile, find what page one doesn't "
@@ -78,6 +82,53 @@ def task_lines(brief: dict, R: str) -> list[str]:
         "found when they did it, what went wrong, what they'd do differently, which option they prefer and why.",
         "B (evidence): data and changes beyond page one: studies, independent tests, official statistics, "
         "manufacturers' data sheets, rule or price changes from the last 12 months, common mistakes and their cost.",
+        "",
+        "Common instructions:",
+        *[f"- {x}" if not x.startswith(("- ", "  ")) else f"  {x}" for x in common],
+    ]
+
+
+def _gaming_lines(brief: dict, R: str) -> list[str]:
+    """A gaming page's researchers: A what players are saying, B what the publisher said and what the press, leakers
+    and insiders report. Every item carries its label, so the page can tell a rumour from an announcement."""
+    q, client = brief.get("target_query"), brief.get("client")
+    common = [
+        f"Topic: \"{q}\" for {client} ({brief.get('domain')}), a {brief.get('page_type') or 'news'} page about a video "
+        "game. Readers are everywhere: the game, its dates and platforms are one story worldwide.",
+        "Use your own web search and page reading (the tool's built-in search; never Serper, never a login, never a page "
+        "that blocks you). At most 5 searches and 6 page reads; stop after about 2 minutes. Prefer the last 30 days.",
+        "Look past the first page of results for the exact query: page one is already covered.",
+        "Keep 4-8 items a reader can't get from the top 10 results that bear on this page's topic.",
+        f"Write {R}/gain_X.yaml (X = your letter) with one write, in exactly this form (YAML list, nothing else):",
+        "- kind: official | leak | rumor | insider | report | reaction | data | change",
+        "  point: one sentence in your own words that keeps the claim's status (\"a leaked build reportedly shows…\")",
+        "  quote: the source's exact words that carry the point, 8-40 words, copied character for character",
+        "  source: the page's full URL",
+        "  who: who says it, as a reader would see it (\"Rockstar Games\", \"Bloomberg's Jason Schreier\", \"players on "
+        "Reddit's r/GTA6\", \"a YouTube breakdown by <channel>\"); never a private person's username",
+        "  date: the date the page shows (blank if none)",
+        "Kinds: official = Rockstar, Take-Two or a platform holder said it (Newswire, earnings call, store page, rating "
+        "board); report = a press outlet reports it; insider = a reporter's or insider's unnamed sources; leak = leaked "
+        "files, builds or footage; rumor = unverified claims; reaction = what players say, think, spotted or want.",
+        "Name only the publisher, platform holders, press outlets (IGN, Bloomberg, Kotaku, Eurogamer…) and public "
+        "platforms (Reddit, X, YouTube). Never quote or name GTA fan or coverage sites (GTA wikis, forums, fan news "
+        "sites) or the client's own site: when a leak first appeared there, use the press report of it instead.",
+        "Never invent, merge or round a quote; never present a leak or rumor as confirmed; skip anything an official "
+        "statement has since contradicted (or keep it as kind change, saying what replaced it).",
+    ]
+    return [
+        f"Run folder: {R}",
+        "The research scripts are running in the background (about a minute). Meanwhile, find what page one doesn't "
+        "have (information gain). Start 2 `seo-gain-researcher` sub-agents in ONE turn, A and B, each given the "
+        "common instructions plus its own focus (Claude Code: the Agent tool with subagent_type `seo-gain-researcher`, "
+        "both in one message; Codex: spawn two `seo_gain_researcher` agents and wait for both; Cursor, Antigravity, "
+        "Gemini CLI, Copilot: the `seo-gain-researcher` subagent, twice, at the same time; a tool without sub-agents: "
+        "do A yourself, then B; without web search, skip this task).",
+        "",
+        "A (players): what the public is saying: Reddit threads, X posts, YouTube breakdowns and their comments, "
+        "ResetEra: reactions, what people spotted in trailers or screenshots, theories, worries, what they want.",
+        "B (sources): what Rockstar and Take-Two said (Newswire, earnings calls and filings, store and rating-board "
+        "listings), and what the press, insiders and leakers report: each with its exact status.",
         "",
         "Common instructions:",
         *[f"- {x}" if not x.startswith(("- ", "  ")) else f"  {x}" for x in common],
@@ -209,10 +260,15 @@ def register(rd: Path) -> list[dict]:
                 return True
         return False
 
+    from . import gaming
+    game = gaming.on(b)
     facts, decisions = [], []
     for it in g["items"]:
         host = re.sub(r"^www\.", "", it["source"].split("/")[2].lower())
         if client_host and (host == client_host or host.endswith("." + client_host)):
+            continue
+        if game and not gaming.nameable(host, b):
+            decisions.append(f"Gain item from {host} skipped: a fan or coverage site (never named or linked).")
             continue
         if host in rivals:
             decisions.append(f"Gain item from {host} skipped: a page-one competitor (never linked).")
@@ -221,7 +277,7 @@ def register(rd: Path) -> list[dict]:
             continue
         if it.get("quote_found"):
             status = "verified"
-        elif it["kind"] in ("experience", "opinion") and not re.search(r"\d", it["quote"]):
+        elif it["kind"] in ("experience", "opinion", "reaction") and not re.search(r"\d", it["quote"]):
             status = "captured"  # read by the researcher, not by the script; usable only as an attributed experience
         else:
             decisions.append(f"Gain item \"{it['point'][:80]}\" dropped: its quote could not be checked on {host}.")
@@ -230,6 +286,9 @@ def register(rd: Path) -> list[dict]:
         facts.append({"id": f"gain:{len(facts) + 1}", "claim": f"{it['who'] or host}" + (f" ({date})" if date else "")
                       + f": {it['point']}", "value": it["quote"], "point": it["point"], "who": it["who"] or host,
                       "kind": it["kind"], "date": date,
+                      **({"label": it["kind"] if it["kind"] in ("official", "leak", "rumor", "insider", "report")
+                          else "community" if it["kind"] == "reaction" else gaming.label(it["quote"], gaming.kind(host, b))}
+                         if game else {}),
                       "condition": (f"published {date}" if date else ""),  # the page's date is a citable figure too
                       "status": status, "basis": f"gain_{it['kind']}",
                       "verified": status == "verified", "source_url": it["source"], "retrieved_at": C.now_iso()})

@@ -60,6 +60,13 @@ def run(ctx):
     for o in targets[n:]:
         skipped.append({"url": o["link"], "why": "quick-mode organic page limit"})
     targets = targets[:n]
+    # a news page also reads Google's Top stories: today's coverage of the story, beyond the ranked pages
+    if ctx.brief.get("page_type") == "news":
+        have = {o["link"] for o in targets}
+        for s in (serp.get("top_stories") or [])[:4]:
+            if s["link"] not in have and C.host(s["link"]) != client:
+                targets.append({"link": s["link"], "title": s.get("title"), "domain": s.get("domain"), "kind": "news",
+                                "position": None, "source_role": "top_story"})
     # Questions are search demand; only their actual source URLs can be scraped. Read selected PAA and
     # related-search sources in the same bounded wave even when all ten ranked pages are readable.
     seen = {o["link"] for o in targets} | {s["url"] for s in skipped}

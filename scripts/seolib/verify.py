@@ -26,11 +26,20 @@ SENSITIVE = re.compile(
     r"[^.]{0,60}\b(only|not|no longer|rather than|instead of|cannot|can't|must|always|never|since|from)\b", re.I)
 
 
+# on a gaming page, where a mistake also misleads: dates, prices, platforms, and whether a claim is confirmed
+GAME_SENSITIVE = re.compile(r"(?i)\b(19|20)\d\d\b|[$£€]\s?\d|\b(confirm\w*|announc\w*|official\w*|leak\w*|rumou?r\w*|"
+                            r"insider|release\w*|launch\w*|delay\w*|price\w*|pre-?order\w*|platforms?|pc|ps5|xbox|"
+                            r"cheats?|codes?|editions?)\b")
+
+
 def build_fast(rd: Path, cap: int = 15) -> int:
     """The fact-check sheet for the one-flow pass: only the lines where a mistake would hurt (formulas and worked
     sums first, then figures no fact closely matches, then money, rates, doses, legal and safety rules), at most
     `cap`, each with its closest fact. A page with none needs no pass."""
-    cl = [c for c in _claims(rd, "draft.md") if SENSITIVE.search(c["sentence"])]
+    from . import gaming
+    game = gaming.on((C.load_json(rd / "fact_sheet.json") or {}).get("brief"))
+    cl = [c for c in _claims(rd, "draft.md") if SENSITIVE.search(c["sentence"])
+          or (game and GAME_SENSITIVE.search(c["sentence"]))]
     # a line the site's own rates data already states is checked: its figures sit together in one clause of the data
     # ("20% up to 37,700"), its year is the data's year, and it does no sum (a worked example can add up wrong from
     # the right rates). Figures the data holds in different clauses may be paired wrongly ("45% above £37,700"), so
@@ -74,6 +83,10 @@ def build_fast(rd: Path, cap: int = 15) -> int:
          f"Page: {b.get('page_type')} for {b.get('client')}, query \"{b.get('target_query')}\", market {b.get('locale')}.",
          "Most lines are expected to be right. Give each one a verdict in verify.md as plugins/fact_check/SKILL.md "
          "says; change the draft only for a line that is wrong.", ""]
+    if game:
+        W[4:4] = ["Gaming page: a line is also wrong when it states a leak, rumor, insider claim or report as confirmed, "
+                  "or names a GTA fan or coverage site. Fix it by adding the label (\"reportedly\", \"according to a "
+                  "leak\", \"IGN reports\") or removing the site's name; a fact's label is shown in brackets.", ""]
     if by_data:
         W[4:4] = [f"{len(by_data)} more line(s) state only figures in {b.get('client')}'s own rates data and are not "
                   "listed. A `rates:` fact below is that data: it is correct, so a figure that differs from it is the error.",
@@ -84,7 +97,8 @@ def build_fast(rd: Path, cap: int = 15) -> int:
         f = c["fact"]
         if f and c["match"] >= 0.15:
             own = f.get("basis") == "site_rates"
-            W.append(f"- closest fact `{f['id']}`{' (the site' + chr(39) + 's own rates data)' if own else ''}: "
+            W.append(f"- closest fact `{f['id']}`{' (the site' + chr(39) + 's own rates data)' if own else ''}"
+                     + (f" [{f['label']}]" if f.get("label") else "") + ": "
                      f"\"{str(f.get('value', ''))[:900 if own else 400]}\""
                      + (f" [applies to: {f['scope']}]" if own and f.get("scope") else "")
                      + (f" — {f['source_url']}" if f.get("source_url") else ""))

@@ -13,6 +13,7 @@ import re
 from collections import defaultdict
 
 from seolib import common as C
+from seolib import gaming
 from seolib.lint import sentences
 from seolib.nlp import _rule_lemma, places
 
@@ -276,6 +277,9 @@ def run(ctx):
              "retrieved_at": C.now_iso()}
         if also:
             f["also"] = also
+        if gaming.on(ctx.brief):  # every page-one claim keeps its status: official, report, leak, insider, rumor
+            f["source_kind"] = gaming.kind(lead["url"], ctx.brief)
+            f["label"] = gaming.label(" ".join([lead["s"]] + also), f["source_kind"])
         if alts:
             f["conflicts"] = alts[:3]
             conflicts += 1

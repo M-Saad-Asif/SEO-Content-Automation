@@ -70,6 +70,10 @@ def build(rd: Path) -> Path:
          f"- Length: {lo}–{hi} words in all (each heading's share is in the plan); every heading answered, no padding."]
     if b.get("instructions"):
         W.append(f"- Operator's instructions: {b['instructions']}")
+    from . import gaming
+    game = gaming.on(b)
+    if game:
+        W += [""] + gaming.brief_lines(b, facts)
     from .pagejob import lines as page_job
     job = [x for x in page_job(sheet) if x.strip() and not x.startswith("## ")]
     W += ["", "## 1. Page job"] + [_cut(x, 380) for x in job[:12]]
@@ -97,7 +101,7 @@ def build(rd: Path) -> Path:
     if gain:
         W += ["", "### Beyond page one (information gain: what no ranking page says; use every one under its heading, "
               "credit who says it in the sentence and link the source on those words)"]
-        W += [f"- `{f['id']}` [{f.get('kind')}] {f.get('who')}{' (' + str(f['date']) + ')' if f.get('date') else ''}: "
+        W += [f"- `{f['id']}` {gaming.tag(f, b) if game else ''}[{f.get('kind')}] {f.get('who')}{' (' + str(f['date']) + ')' if f.get('date') else ''}: "
               f"{_cut(f.get('point'), 220)} — {f.get('source_url')}"
               + ("" if f.get("status") == "verified" else " [an experience, quoted by the researcher: attribute it, no figures]")
               for f in gain]
@@ -106,7 +110,10 @@ def build(rd: Path) -> Path:
               "source named and linked in the same sentence)"]
         W += [f"- `{f['id']}` \"{' '.join(str(f.get('value')).split())}\" — {f.get('source_url')}"
               for f in facts if f["id"] in quoted]
-    if rates:
+    if rates and game:
+        W += ["", f"### {b.get('client')}'s own records (verified: they win any disagreement; a stat they leave blank is "
+              "not announced; name each item exactly as its record does and don't link it)"]
+    elif rates:
         W += ["", f"### {b.get('client')}'s own rates data (the figures its calculators use, checked against the official "
               "source on the date shown: they win any disagreement, page one's included; say which year or country a "
               "figure is for, and link the official source, never the data)"]
@@ -118,11 +125,13 @@ def build(rd: Path) -> Path:
         W += [f"- `{f['id']}` {note(f.get('value'), 30)} — {f.get('source_url')}"
               + (f" [applies to: {_cut(f['scope'], 80)}]" if f.get("scope") else "") for f in auth[:25]]
     if serpf:
-        W += ["", "### Page one (validated: state as fact, never link a competitor; disagreements already settled by "
+        W += ["", "### Page one (each with its label: state official points as fact and every other point with its "
+              "label; credit only press and platforms; never link a fan site)" if game else
+              "### Page one (validated: state as fact, never link a competitor; disagreements already settled by "
               "the majority of ranking sites)"]
         for f in serpf[:70]:
             q = f" (answers: {f['question']})" if f.get("question") else ""
-            W.append(f"- `{f['id']}` [{f.get('consensus') or 1} site{'s' if (f.get('consensus') or 1) != 1 else ''}]"
+            W.append(f"- `{f['id']}` {gaming.tag(f, b) if game else ''}[{f.get('consensus') or 1} site{'s' if (f.get('consensus') or 1) != 1 else ''}]"
                      f" {note(f.get('value'))}{q}")
     conf = [f for f in serpf if f.get("conflicts")]
     if conf:
@@ -138,9 +147,12 @@ def build(rd: Path) -> Path:
           "- A figure no fact above carries (arithmetic you show from facts is fine), or a losing figure.",
           "- A competitor's link, invented experience, statistics or credentials, HTML, or an FAQ block (questions are "
           "headings in the plan).",
-          "- \"I\" claiming you used, tried, tested, bought or saw something, \"in my experience\", \"my clients\", years "
-          "of experience" + (" (only the client's experience notes below may be told in the first person)"
-                             if b.get("experience") else "") + "."]
+          ("- \"We\" claiming we played, tested, ran or saw anything beyond the published material, \"in our "
+           "experience\", \"our playthrough\"; and \"I\" anywhere: the editorial desk signs this page"
+           if str(b.get("voice") or "").lower() == "we" else
+           "- \"I\" claiming you used, tried, tested, bought or saw something, \"in my experience\", \"my clients\", years "
+           "of experience") + (" (only the client's experience notes below may be told in the first person)"
+                               if b.get("experience") else "") + "."]
     if b.get("experience"):
         W += ["", "## 5. First-hand experience you may tell (the client's own notes; nothing beyond them)"]
         W += [f"- {_cut(x, 300)}" for x in (b["experience"] if isinstance(b["experience"], list) else [b["experience"]])]

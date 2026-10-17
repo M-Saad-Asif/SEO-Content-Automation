@@ -15,7 +15,7 @@ from urllib.parse import urlparse
 
 from . import common as C
 
-TYPES = ("service", "product", "category", "home", "guide", "location", "company", "tool")
+TYPES = ("service", "product", "category", "home", "guide", "location", "company", "tool", "news")
 # A page whose main content is an interactive tool: the tool is the offer, the text explains it
 TOOL_WORDS = re.compile(r"\b(calculators?|converters?|checkers?|estimators?|planners?|generators?|simulators?|"
                         r"trackers?|quiz(zes)?|finders?|counters?|timers?|tool)\b", re.I)
@@ -153,6 +153,7 @@ def commerce(text: str, url: str, title: str = "") -> dict:
 
 
 SAID_TYPE = [("tool", r"\b(calculator|converter|checker|estimator|tool) page\b"),
+             ("news", r"\bnews (article|story|post|piece|page)\b"),
              ("product-guide", r"\b(product|buying|buyer'?s?) guide\b"),
              ("hub", r"\b(hub|pillar) page\b"),
              ("spoke", r"\bspoke page\b"),
@@ -178,7 +179,7 @@ COMMERCIAL_Q = re.compile(r"\b(services?|agenc(y|ies)|compan(y|ies)|providers?|s
 
 def explicit_type(request: str) -> str | None:
     """Only operator instructions establish an explicit type; query words are intent signals."""
-    typed = re.search(r"\bpage[_ -]type\s*[:=]\s*(product-guide|service|product|category|location|home|company|guide|hub|spoke|tool)\b",
+    typed = re.search(r"\bpage[_ -]type\s*[:=]\s*(product-guide|service|product|category|location|home|company|guide|hub|spoke|tool|news)\b",
                       request or "", re.I)
     if typed:
         return typed.group(1).lower()
