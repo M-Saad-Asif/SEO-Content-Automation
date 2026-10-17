@@ -2191,6 +2191,10 @@ class Linter:
                 own = max((score(f) for f in facts if f[0] == ctx), default=0)
                 if own >= score(best) - 0.1:
                     continue  # the credited source says much the same thing
+                from . import gaming as _g
+                if _g.on(self.b) and not _g.nameable(best[0], self.b) and (
+                        _g.ATTRIB.search(plain) or any(x.search(plain) for x in _g.LABELS.values())):
+                    continue  # a gaming page credits such a claim by its label or claimant, never the site that ran it
                 self.add("U20-inherited-attribution", "block", b, plain,
                          f"reads as {ctx}'s claim (credited just before), but it is on {best[1]}",
                          "name that source on this sentence by its usual name (\"the RHS advises…\"); it needs a link "

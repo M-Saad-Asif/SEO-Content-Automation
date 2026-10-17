@@ -30,7 +30,7 @@ PRESS = ("ign.com", "gamespot.com", "polygon.com", "kotaku.com", "eurogamer.net"
          "axios.com", "variety.com", "hollywoodreporter.com", "engadget.com", "digitaltrends.com", "vg247.com",
          "metro.co.uk", "independent.co.uk", "telegraph.co.uk", "usatoday.com", "cnet.com", "wired.com", "gamedeveloper.com")
 PUBLIC = ("reddit.com", "x.com", "twitter.com", "youtube.com", "youtu.be", "twitch.tv", "tiktok.com", "instagram.com",
-          "threads.net", "bsky.app", "discord.com", "resetera.com")
+          "threads.net", "bsky.app", "discord.com", "resetera.com", "wikipedia.org")
 # banned AI-tell words a game uses literally ("unlock the Cheetah")
 ALLOWED = {"unlock", "unlocks", "unlocking"}
 # words a gaming page uses as labels, as often as it has claims: never capped as filler
@@ -307,7 +307,8 @@ def record_facts(brief: dict, strong: str = "", live: str = "") -> list[dict]:
             word = {"vehicles": r"vehicles?|cars?|bikes?|boats?|motorcycles?|rides?", "weapons": r"weapons?|guns?|pistols?|rifles?|smgs?|arsenal",
                     "places": r"map|places?|locations?|regions?|cities|city|areas?|leonida|world"}.get(typ, re.escape(typ))
             named = re.search(rf"(?<![\w']){re.escape(str(r['name']).lower())}(?![\w'])", text)
-            if not named and not re.search(rf"\b(?:{word}|database)\b", text):
+            if not named and typ not in (brief.get("site_records_always") or []) and \
+                    not re.search(rf"\b(?:{word}|database)\b", text):
                 continue
             unknown = [_words(k) for k, v in r.items() if v is None and STAT.search(k)]
             known = [f"{_words(k)}: {v}" for k, v in r.items() if v not in (None, "") and STAT.search(k)]
@@ -359,7 +360,8 @@ def export(rd: Path, brief: dict, today: str | None = None) -> Path | None:
         k = kind(url, brief)
         if k in ("official", "press") and url not in seen:
             seen.add(url)
-            sources.append((f"{_source_name(url)} — {text.strip()}"[:110], url))
+            name = _source_name(url)
+            sources.append(((name if text.strip().lower() == name.lower() else f"{name} — {text.strip()}")[:110], url))
     cat = category(brief.get("target_query"), brief.get("page_type"), str(meta.get("category") or brief.get("site_category") or ""))
     slug = re.sub(r"[^a-z0-9]+", "-", str(brief.get("slug") or title).lower()).strip("-")[:80]
     dest = Path(str(repo)).expanduser() / "content" / cat / f"{slug}.md"
@@ -369,9 +371,10 @@ def export(rd: Path, brief: dict, today: str | None = None) -> Path | None:
     tags = meta.get("tags") or [t for t in [brief.get("target_query")] if t]
     L = ["---", f"title: {_yaml_str(title)}", f"excerpt: {_yaml_str(meta.get('meta_description') or meta.get('excerpt') or '')}"]
     if meta.get("quick_answer") or meta.get("quickAnswer"):
-        L.append(f"quickAnswer: {_yaml_str(meta.get('quick_answer') or meta.get('quickAnswer'))}")
+        qa = re.sub(r"\*\*|__|`|\[([^\]]+)\]\([^)]*\)", lambda m: m.group(1) or "", str(meta.get("quick_answer") or meta.get("quickAnswer")))
+        L.append(f"quickAnswer: {_yaml_str(qa)}")
     L.append(f"publishedAt: \"{old.get('publishedAt') or today}\"")
-    if old.get("publishedAt"):
+    if old.get("publishedAt") and str(old["publishedAt"]) != today:  # a same-day re-export is not an update
         L.append(f"updated: \"{today}\"")
     L.append("tags: [" + ", ".join(_yaml_str(t) for t in tags[:6]) + "]")
     L += ["author:", f"  id: {author['id']}", f"  name: {author['name']}", f"  role: {author['role']}"]
