@@ -33,8 +33,11 @@ PUBLIC = ("reddit.com", "x.com", "twitter.com", "youtube.com", "youtu.be", "twit
           "threads.net", "bsky.app", "discord.com", "resetera.com")
 # banned AI-tell words a game uses literally ("unlock the Cheetah")
 ALLOWED = {"unlock", "unlocks", "unlocking"}
+# words a gaming page uses as labels, as often as it has claims: never capped as filler
+LABEL_WORDS = {"official", "officially", "confirmed", "confirm", "confirms", "reportedly", "reported", "rumored",
+               "rumoured", "leaked", "unconfirmed"}
 # the game's own fan and coverage sites: never named, never linked
-FAN = re.compile(r"(?i)gta|grand-?theft|rockstar(?!games\.)|fandom\.com|wiki|leonida|vicecity")
+FAN = re.compile(r"(?i)gta|grand-?theft|rockstar(?!games\.)|fandom\.com|leonida|vicecity|vicountdown|\bvi-?countdown")
 
 LABELS = {
     "leak": re.compile(r"(?i)\b(leak(?:s|ed|er|ers)?|data-?min(?:e|ed|er|ers|ing)|datamine\w*|files? (?:show|suggest))\b"),
@@ -63,6 +66,15 @@ def on(brief: dict | None) -> bool:
     return str((brief or {}).get("niche") or "").lower() == "gaming"
 
 
+def names_rx(brief: dict | None) -> re.Pattern:
+    """The game's names: the profile's `game_names`, else its synonyms (both sides), else the query's first words."""
+    b = brief or {}
+    syn = b.get("synonyms") or {}
+    names = list(b.get("game_names") or []) or (list(syn.keys()) + list(syn.values()))
+    names = [str(n) for n in names if str(n).strip()] or [" ".join(str(b.get("target_query") or "x").split()[:2])]
+    return re.compile(r"(?i)(?<![\w-])(?:" + "|".join(re.escape(n) for n in sorted(set(names), key=len, reverse=True)) + r")(?![\w-])")
+
+
 def host(url_or_domain: str) -> str:
     h = re.sub(r"^https?://", "", str(url_or_domain or "").lower()).split("/")[0].split(":")[0]
     return h[4:] if h.startswith("www.") else h
@@ -73,7 +85,9 @@ def _match(h: str, names) -> bool:
 
 
 def kind(url_or_domain: str, brief: dict | None = None) -> str:
-    """official / press / public / client / rival (a fan or coverage site, or anything else: never named)."""
+    """official / press / public / client / rival (a GTA fan or coverage site: never named, its items dropped) /
+    other (a site that is neither, such as a small gaming news site: its claims are used with their label, the site
+    is never named or linked)."""
     b = brief or {}
     h = host(url_or_domain)
     if not h:
@@ -88,7 +102,7 @@ def kind(url_or_domain: str, brief: dict | None = None) -> str:
         return "press"
     if _match(h, PUBLIC):
         return "public"
-    return "rival"
+    return "rival" if FAN.search(h) else "other"
 
 
 def nameable(url_or_domain: str, brief: dict | None = None) -> bool:
@@ -109,7 +123,7 @@ def label(sentence: str, source_kind: str = "") -> str:
             return k
     if source_kind == "official" or SAID.search(s):
         return "official"
-    return "report" if source_kind == "press" else "rumor"
+    return "report" if source_kind in ("press", "other") else "rumor"
 
 
 def category(query: str, page_type: str = "", said: str = "") -> str:
@@ -140,7 +154,8 @@ def tag(f: dict, brief: dict | None = None) -> str:
     url = f.get("source_url") or ""
     k = f.get("source_kind") or kind(url, brief)
     who = _source_name(url) if k in ("official", "press") else (
-        "a public platform: name the platform, not the user" if k == "public" else "unnamed site: never name it")
+        "a public platform: name the platform, not the user" if k == "public" else
+        "a gaming news site: never name it" if k == "other" else "unnamed site: never name it")
     return f"[{STATUS.get(lab, lab)} · {who}] "
 
 

@@ -47,12 +47,12 @@ def check_sites(lint) -> None:
     if game:  # gaming: fan and coverage sites (anything not official, press or a public platform) are never named
         stories = (lint.research.get("serp_intel") or {}).get("top_stories") or []
         rivals |= {gaming.host(o.get("link") or o.get("domain") or "") for o in serp + stories
-                   if gaming.kind(o.get("link") or o.get("domain") or "", lint.b) == "rival"}
+                   if gaming.kind(o.get("link") or o.get("domain") or "", lint.b) in ("rival", "other")}
     else:
         rivals |= {re.sub(r"^www\.", "", o.get("domain", "")) for o in serp if CALC_SITE.search(o.get("domain", ""))}
     rivals.discard(client)
     rivals.discard("")
-    rule, what = ("C05-fan-site", "a GTA fan or coverage site") if game else ("C04-calculator-site", "another online calculator website")
+    rule, what = ("C05-fan-site", "a GTA fan or coverage site, or a site the page may not credit") if game else ("C04-calculator-site", "another online calculator website")
     page = (lint.b.get("page_url") or "").rstrip("/")
     for b in lint.blocks:
         raw = b.get("raw") or b["text"]
@@ -60,7 +60,7 @@ def check_sites(lint) -> None:
             host = re.sub(r"^www\.", "", u.split("/")[2].lower())
             if page and u.rstrip("/") == page:
                 lint.add("U25-self-link", "block", b, u, "the page links to itself", "drop the link; keep the words")
-            elif any(host == r or host.endswith("." + r) for r in rivals) or (game and gaming.kind(host, lint.b) == "rival"):
+            elif any(host == r or host.endswith("." + r) for r in rivals) or (game and gaming.kind(host, lint.b) in ("rival", "other")):
                 lint.add(rule, "block", b, u, f"a link to {what}",
                          "drop the link and the site's name; credit the press report of it, or say \"a leak shared online\""
                          if game else "drop the link and the site's name; state the point in your own words")

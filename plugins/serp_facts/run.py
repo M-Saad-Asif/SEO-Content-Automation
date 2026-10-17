@@ -45,6 +45,12 @@ TOOL_SELF = re.compile(r"(?i)\b(this|the) (calculator|tool|page|site|website|app
                        r"\b(calculators?|tools?) (above|below|on this)\b|\b(click|tap|press|select) (the|on|below|here)\b|"
                        r"\bintroduces? customers\b|\beligibility check\b|\bapplicant portal\b|\bonline banking\b|"
                        r"\bone of (our|five|four|three|several) (calculators|tools)\b")
+# a reference list ("GTA 6 Delayed Again Until November 2026. IGN. Ziff Davis. Archived from the original on…") is other
+# pages' headlines, not this page's statements; legal small print is never a fact
+CITATION = re.compile(r"(?i)\barchived (?:from )?(?:the )?original\b|\bcite_note\b|\bretrieved (?:on )?\d|\bISBN\b|"
+                      r"https?://|\bwikipedia\.org\b|\btrademarks? of\b|all rights reserved|©")
+REF_HEADING = re.compile(r"(?i)^\s*(references?|notes?|citations?|footnotes|sources|bibliography|further reading|"
+                         r"external links|see also|works cited)\s*$")
 VERB = re.compile(r"\b(is|are|was|were|be|been|has|have|had|do|does|can|could|will|would|should|must|may|might|need|"
                   r"needs|take|takes|cost|costs|\w+s|\w+ed)\b", re.I)
 
@@ -155,6 +161,8 @@ def run(ctx):
         pg_root = (p.get("domain") or "").lower().removeprefix("www.").split(".")[0]
         pg_root = pg_root if len(pg_root) > 3 else ""  # a sentence naming its own site is about that site
         for kind_, x, hdr in units_of(p):
+            if REF_HEADING.match(hdr or ""):
+                continue  # a reference list or "External links": other pages' headlines, not this page's statements
             for s in ([x] if kind_ in ("row", "list") else sentences(x)):
                 s = " ".join(s.split())
                 if kind_ == "p" and ANAPHOR.match(s) and last:
@@ -164,7 +172,7 @@ def run(ctx):
                 if not (6 <= n <= (70 if kind_ == "list" else 45)) or PROMO.search(s) or s.rstrip().endswith("?"):
                     continue
                 own_brand = pg_root and re.search(rf"(?i)\b{re.escape(pg_root)}\b", s)
-                if SELF.search(s) or TOOL_SELF.search(s) or own_brand or "..." in s or (kind_ == "p" and not VERB.search(s)):
+                if SELF.search(s) or TOOL_SELF.search(s) or CITATION.search(s) or own_brand or "..." in s or (kind_ == "p" and not VERB.search(s)):
                     continue
                 if kind_ != "row" and " | " in s:
                     continue  # a page title or menu line ("How to Fix a Dripping Tap | Wickes"), not a statement
@@ -262,7 +270,7 @@ def run(ctx):
         if len(picked) < 70 or (per_page[item[2]["url"]] < 4 and len(picked) < 110):
             picked.append(item)
             per_page[item[2]["url"]] += 1
-    facts = []
+    facts, creditable = [], []  # on a gaming page, the press and official pages a claim may be credited and linked to
     for i, (score, k, lead, alts, note, also) in enumerate(picked, 1):
         n = len(k["domains"])
         where = f"\"{lead['heading'][:70]}\" on " if lead["heading"] else ""
@@ -280,6 +288,9 @@ def run(ctx):
         if gaming.on(ctx.brief):  # every page-one claim keeps its status: official, report, leak, insider, rumor
             f["source_kind"] = gaming.kind(lead["url"], ctx.brief)
             f["label"] = gaming.label(" ".join([lead["s"]] + also), f["source_kind"])
+            if f["source_kind"] in ("official", "press", "public"):
+                creditable.append({"url": C.clean_url(lead["url"]), "state": "cited", "status": None, "captured": False,
+                                   "label": f"{f['label']} ({gaming.host(lead['url'])})"})
         if alts:
             f["conflicts"] = alts[:3]
             conflicts += 1
@@ -302,10 +313,22 @@ def run(ctx):
                           "value": snippet, "status": "serp", "basis": "paa_answer", "verified": True,
                           "source_url": a["link"], "rank": None, "domains": [C.host(a["link"])], "consensus": 1,
                           "question": q, "retrieved_at": C.now_iso()})
+    if gaming.on(ctx.brief):
+        for f in facts:  # Google's answers keep their status too
+            if "label" not in f:
+                f["source_kind"] = gaming.kind(f["source_url"], ctx.brief)
+                f["label"] = gaming.label(f["value"], f["source_kind"])
     with C.file_lock(ctx.rd / "fact_sheet.json"):
         sheet = C.load_json(ctx.rd / "fact_sheet.json")
         sheet["facts"] = [f for f in sheet["facts"] if not str(f.get("id", "")).startswith("serp:")] + facts
         C.save_json(ctx.rd / "fact_sheet.json", sheet)
+    if creditable:  # a gaming page may link the press and official pages it credits
+        with C.file_lock(ctx.rd / "link_map.json"):
+            lm = C.load_json(ctx.rd / "link_map.json") or {}
+            have = {o.get("url") for o in lm.get("official", [])}
+            lm["official"] = lm.get("official", []) + [o for o in {o["url"]: o for o in creditable}.values()
+                                                       if o["url"] not in have]
+            C.save_json(ctx.rd / "link_map.json", lm)
     decisions = [f"SERP-validated facts: {len(facts)} points from {total} page-one sites"
                  f" ({sum(1 for f in facts if f['consensus'] >= 2)} made by 2+ sites); {conflicts} contradictions resolved"
                  " by majority of ranking sites (rank breaks ties)" + (f"; {overridden} overridden by an authority fact" if overridden else "")]

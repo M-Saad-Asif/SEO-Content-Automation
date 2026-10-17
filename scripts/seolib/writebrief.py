@@ -102,7 +102,9 @@ def build(rd: Path) -> Path:
         W += ["", "### Beyond page one (information gain: what no ranking page says; use every one under its heading, "
               "credit who says it in the sentence and link the source on those words)"]
         W += [f"- `{f['id']}` {gaming.tag(f, b) if game else ''}[{f.get('kind')}] {f.get('who')}{' (' + str(f['date']) + ')' if f.get('date') else ''}: "
-              f"{_cut(f.get('point'), 220)} — {f.get('source_url')}"
+              f"{_cut(f.get('point'), 220)} — "
+              + (f.get("source_url") if not game or gaming.nameable(f.get("source_url") or "", b)
+                 else "(a site the page may not name or link: credit the claim by its label only)")
               + ("" if f.get("status") == "verified" else " [an experience, quoted by the researcher: attribute it, no figures]")
               for f in gain]
     if quoted:
@@ -131,8 +133,9 @@ def build(rd: Path) -> Path:
               "the majority of ranking sites)"]
         for f in serpf[:70]:
             q = f" (answers: {f['question']})" if f.get("question") else ""
+            src = f" — {f['source_url']}" if game and f.get("source_kind") in ("official", "press", "public") else ""
             W.append(f"- `{f['id']}` {gaming.tag(f, b) if game else ''}[{f.get('consensus') or 1} site{'s' if (f.get('consensus') or 1) != 1 else ''}]"
-                     f" {note(f.get('value'))}{q}")
+                     f" {note(f.get('value'))}{q}{src}")
     conf = [f for f in serpf if f.get("conflicts")]
     if conf:
         W += ["", "### Settled disagreements (never use the losing figure)"]

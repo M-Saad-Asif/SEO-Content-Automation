@@ -53,7 +53,8 @@ def normalise(text: str) -> str:
     s = re.sub(r"\bu\.s\.(a\.)?|\bu\.s\b", "us", s)
     s = re.sub(r"\bu\.k\.?", "uk", s)
     s = re.sub(r"(?<=\w)[-‐–/](?=\w)", " ", s)               # carry-on, e-visa, 3-3-3
-    s = re.sub(r"\b([b-hj-z])\s+(?=[a-z]{3,})", r"\1", s)     # "e visa" -> "evisa", "e mail" -> "email" (not a/i)
+    # "e visa" -> "evisa", "e mail" -> "email" (not a/i, and never the "s" of a possessive: "lucia's car")
+    s = re.sub(r"(?<!')\b([b-hj-z])\s+(?=[a-z]{3,})", r"\1", s)
     s = re.sub(r"\b\d(?:\s+\d\b){2,}", lambda m: m.group(0).replace(" ", ""), s)  # 5 4 3 2 1 -> 54321
     # units: "100g" = "100 grams" = "100 g"; "1.6mm" = "1.6 millimetres"
     s = re.sub(r"(\d)(mg|kg|g|mm|cm|km|m|ml|l|kcal|lbs?|oz)\b", r"\1 \2", s)
@@ -129,7 +130,7 @@ def _model():
 def _from_doc(doc) -> tuple:
     out = []
     for t in doc:
-        if t.is_space or t.is_punct:
+        if t.is_space or t.is_punct or t.tag_ == "POS":  # the possessive "'s" is not a word of the topic
             continue
         w = t.text
         if t.pos_ in ("NOUN", "VERB", "AUX") and t.lemma_ and t.lemma_ != "-PRON-":

@@ -51,7 +51,7 @@ class SourceAndLabelTests(unittest.TestCase):
     def test_who_can_be_named(self):
         for d, k in (("rockstargames.com", "official"), ("www.ign.com", "press"), ("bloomberg.com", "press"),
                      ("reddit.com", "public"), ("gtabase.com", "rival"), ("gtaforums.com", "rival"),
-                     ("rockstarintel.com", "rival"), ("someblog.net", "rival"), ("gta6coverage.com", "client")):
+                     ("rockstarintel.com", "rival"), ("gameluster.com", "other"), ("gta6coverage.com", "client")):
             self.assertEqual(gaming.kind(d, B), k, d)
         self.assertEqual(gaming.kind("ign.com", {**B, "competitor_sites": ["ign.com"]}), "rival")
 
@@ -64,6 +64,8 @@ class SourceAndLabelTests(unittest.TestCase):
                         ("The studio is hiring more QA testers in Lincoln.", "report")):
             self.assertEqual(gaming.label(s, "press"), want, s)
         self.assertEqual(gaming.label("The studio is hiring more QA testers.", "rival"), "rumor")
+        self.assertFalse(gaming.nameable("gameluster.com", B))  # a small news site: its claim, never its name
+        self.assertIn("never name it", gaming.tag({"label": "report", "source_url": "https://gameluster.com/?p=1"}, B))
 
     def test_section_and_page_type_follow_the_query(self):
         for q, cat, pt in (("gta 6 cheats", "cheats", "guide"), ("gta 6 pc requirements", "tech", "guide"),
@@ -191,9 +193,10 @@ class ResearchTests(unittest.TestCase):
                                   "quote": "the map looks way bigger than anything Rockstar has made before",
                                   "source": src, "who": "players", "date": "", "quote_found": True}
         C.save_json(rd / "research" / "gain.json", {"items": [item("https://www.reddit.com/r/GTA6/comments/x", "reaction"),
-                                                              item("https://gtaforums.com/topic/1", "rumor")]})
+                                                              item("https://gtaforums.com/topic/1", "rumor"),
+                                                              item("https://gameluster.com/?p=2", "report")]})
         got = register(rd)
-        self.assertEqual([f["source_url"] for f in got], ["https://www.reddit.com/r/GTA6/comments/x"])
+        self.assertEqual([f["source_url"] for f in got], ["https://www.reddit.com/r/GTA6/comments/x", "https://gameluster.com/?p=2"])
         self.assertEqual(got[0]["label"], "community")
 
     def test_a_gaming_brief_gets_its_sites_section_in_its_address(self):

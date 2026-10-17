@@ -267,8 +267,8 @@ def register(rd: Path) -> list[dict]:
         host = re.sub(r"^www\.", "", it["source"].split("/")[2].lower())
         if client_host and (host == client_host or host.endswith("." + client_host)):
             continue
-        if game and not gaming.nameable(host, b):
-            decisions.append(f"Gain item from {host} skipped: a fan or coverage site (never named or linked).")
+        if game and gaming.kind(host, b) == "rival":
+            decisions.append(f"Gain item from {host} skipped: a GTA fan or coverage site (never named or linked).")
             continue
         if host in rivals:
             decisions.append(f"Gain item from {host} skipped: a page-one competitor (never linked).")

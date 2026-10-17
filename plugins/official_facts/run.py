@@ -36,6 +36,12 @@ SECTOR_SITES = {
     "in": {"money": ["rbi.org.in", "sebi.gov.in", "incometax.gov.in"], "health": ["mohfw.gov.in"],
            "legal": ["indiacode.nic.in"]},
 }
+# a page's legal small print: never a fact about the topic
+BOILERPLATE = re.compile(r"(?i)\btrademarks? (?:of|owned)\b|all rights reserved|©|\bcopyright\b|privacy policy|"
+                         r"terms of (?:use|service)|cookie")
+# what a game's official page says in its headings: dates, platforms, editions, trailers
+GAME_KEY = re.compile(r"(?i)\b(?:19|20)\d\d\b|\b(?:ps5|playstation|xbox|series [xs]|pc|pre-?orders?|editions?|"
+                      r"trailers?|release[sd]?|launch\w*|coming|available)\b")
 # A topic's sector, in the words every English market uses (one market's product names alongside the others')
 SECTOR_WORDS = {
     "money": r"\b(invest\w*|isas?|401\(?k\)?|iras?|roth|superannuation|super fund|kiwisaver|rrsps?|tfsas?|pensions?|"
@@ -149,6 +155,7 @@ def run(ctx):
     cands, searched = [], set()
 
     def add(link, from_search=False):
+        link = C.clean_url(link) if link else link
         if link and client not in link and link not in cands:
             cands.append(link)
             if from_search:
@@ -169,6 +176,7 @@ def run(ctx):
     seen_gov = {domain(u) for u in cands if kind(u) == "government"}
     from seolib import gaming
     game = gaming.on(ctx.brief)
+    game_name = gaming.names_rx(ctx.brief)
     if game:
         # a game's authorities are its publisher and platform holders: their pages ranking here, the profile's
         # standing pages (the game's official site), and one search across them for this topic
@@ -357,6 +365,15 @@ def run(ctx):
                     continue
                 scored.append((rel + (1 if NUM.search(s) or PHONE.search(s) else 0), s))
         scored.sort(key=lambda x: -x[0])
+        if game:
+            # a game's store or official page says its key facts in the title and headings ("Grand Theft Auto VI:
+            # Coming November 19, 2026 to Xbox Series X|S"), not in body sentences
+            # (a store page's other headings are accessories, "Xbox Rechargeable Battery": only the ones naming the
+            # game carry its facts)
+            heads = [title] + [x for t_, x in blocks[:400] if t_ in ("h1", "h2", "h3")]
+            scored = [(99, x.rstrip(". ") + ".") for x in dict.fromkeys(heads)
+                      if x and GAME_KEY.search(x) and len(x.split()) >= 4 and game_name.search(x)] + scored
+        scored = [(r_, s_) for r_, s_ in scored if not BOILERPLATE.search(s_)]
         kept = list(dict.fromkeys(s for _, s in scored))[:15 if BLOGLIKE.search(u) else 40]
         slug = re.sub(r"[^a-z0-9]+", "-", domain(u))[:20]
         if any(f["id"].startswith(f"auto:{slug}:") for f in facts):  # second page on a domain: ids must stay unique

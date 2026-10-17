@@ -76,7 +76,8 @@ def jac(a: set, b: set) -> float:
 
 ACRONYMS = {w.lower(): w for w in ("UK", "US", "USA", "EU", "UAE", "ISA", "ISAs", "LISA", "APR", "AER", "LTV", "SDLT",
                                        "LBTT", "LTT", "HMRC", "NHS", "VAT", "PAYE", "BMI", "IRS", "CRA", "RRSP", "TFSA",
-                                       "GDP", "RPI", "CPI", "ERC", "ERCs", "FCA", "PDF", "GBP", "USD", "EUR", "BTL")}
+                                       "GDP", "RPI", "CPI", "ERC", "ERCs", "FCA", "PDF", "GBP", "USD", "EUR", "BTL",
+                                       "GTA", "VI", "PS4", "PS5", "PC", "NPC", "NPCs", "FPS", "DLC", "ESRB", "PEGI", "RPG")}
 # the same thing named three ways in search phrases: one word for the duplicate check
 SAME_WORD = {"house": "home", "property": "home", "flat": "home", "homes": "home", "properties": "home"}
 
@@ -135,14 +136,22 @@ def build(rd: Path) -> dict:
     query = b.get("target_query") or ""
     client = b.get("client") or "the client"
     ptype = b.get("page_type") or "guide"
-    main = words(query)
+    # the brief's synonyms are one name ("Grand Theft Auto 6" and "GTA 6"): "What's Grand Theft Auto 6's release
+    # date" and "What is the release date of GTA 6?" are one heading
+    syn = {str(k).lower(): str(v) for k, v in (b.get("synonyms") or {}).items()}
+
+    def canon(s: str) -> str:
+        for k in sorted(syn, key=len, reverse=True):
+            s = re.sub(rf"(?i)(?<![\w-]){re.escape(k)}(?![\w-])", syn[k], s or "")
+        return s
+    main = words(canon(query))
     from .graph import foreign, market_of
     from .market import filter_locale
     home_geo, home_cur = market_of(filter_locale(b))  # no market filter on a global page
     decision = {r["query"].lower(): r.get("decision") for r in qmap.get("queries", [])}
 
     def own(s):  # a heading's own words: the topic's words are in every heading and say nothing
-        return words(s) - main
+        return words(canon(s)) - main
 
     # the topic's entities (what the ranking pages are about): a heading only one competitor uses must be built
     # from them, or it is that site's joke or slogan ("What better solution … than some fizzy stuff to drink?")
@@ -418,7 +427,8 @@ def build(rd: Path) -> dict:
             hw = lambda h: own(h["title"]) | set().union(*(own(x["title"]) for x in h["subs"])) | \
                 set().union(*(own(q) for q in h["questions"]))
             best = max(heads, key=lambda h: len(ft & hw(h)))
-            if len(ft & hw(best)) >= (2 if len(hw(best)) >= 3 else 1):
+            # a news page is one story: every item the researchers found is on it, so each goes to its closest heading
+            if b.get("niche") == "gaming" or len(ft & hw(best)) >= (2 if len(hw(best)) >= 3 else 1):
                 if f["id"] not in best["facts"]:
                     best["facts"].append(f["id"])
                 for h in heads:
@@ -545,7 +555,7 @@ def build(rd: Path) -> dict:
             parts.append({"id": "ABC"[i], "headings": [h["title"] for h in chunk], "with_intro": i == 0})
     meanings = mixed_meanings(rd, query, lm, out)
     plan = {"h1": b.get("h1") or sentence_case(query), "intro_words": 90, "headings": heads, "variants": variants,
-            "voice": b.get("voice") or "",
+            "voice": b.get("voice") or "", "niche": b.get("niche") or "",
             "meanings": meanings,
             "parts": parts, "words": [lo, hi]}
     C.save_json(rd / "plan.json", plan)
@@ -676,7 +686,8 @@ def quote_candidates(facts: list[dict]) -> list[dict]:
 
 def render(plan: dict, facts_by_id: dict) -> list[str]:
     """The plan as the writer reads it."""
-    L = [f"H1: {plan['h1']}",
+    L = [f"H1: the front matter title's words (section 0), about \"{plan['h1']}\"" if plan.get("niche") == "gaming"
+         else f"H1: {plan['h1']}",
          f"Opening (no heading, about {plan['intro_words']} words): answer the main query in the first two sentences."]
     # each outside source is linked once on the page: writers draft their parts at the same time and can't see
     # each other's links, so the plan says which heading links it (the first in page order); the others name it

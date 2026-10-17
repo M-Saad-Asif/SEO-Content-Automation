@@ -824,6 +824,8 @@ class Linter:
                 if re.search(pat, t):
                     self.add("X01-known-failure", "block", b, s, f"matches a known failure pattern /{pat}/", "rewrite from the fact sheet")
             for ph, cap in (self.lex.get("limited") or {}).items():
+                if ph in allowed or (gaming.on(self.b) and ph in gaming.LABEL_WORDS):
+                    continue
                 hits = list(re.finditer(rf"(?<![\w-]){re.escape(ph)}(?![\w-])", t))
                 if ph in ("addresses", "address", "highlights", "highlight", "features", "feature"):
                     # the noun ("saved addresses", "the highlights") isn't the AI-tell verb ("addresses the issue")
@@ -1037,6 +1039,7 @@ class Linter:
             for bare in re.findall(r"(?<![(\[])https?://[^\s)]+", strip_md(raw)):
                 self.add("U04-bare-url", "warn", b, bare, "bare URL in copy", "use a descriptive anchor")
         from .domains import kind as _kd
+        from . import gaming as _game
         dom0 = (self.b.get("domain") or "").replace("www.", "")
         first_sec = next((b["section"] for b in self.blocks if b["type"] == "h2"), None)
         for b in self.blocks:
@@ -1044,7 +1047,8 @@ class Linter:
                 break
             hit = next(((a, u) for a, u in re.findall(r"\[([^\]]+)\]\(([^)\s]+)\)", b.get("raw", ""))
                         if dom0 not in u), None)
-            if hit and _kd(hit[1]) in ("business_site", "ecommerce", "marketplace", "help_centre"):
+            if hit and _kd(hit[1]) in ("business_site", "ecommerce", "marketplace", "help_centre") and not (
+                    _game.on(self.b) and _game.kind(hit[1], self.b) == "official"):
                 self.add("U14-commercial-first-link", "block", b, f"[{hit[0]}]({hit[1]})",
                          "the page's first outbound link sends readers to a business (possibly a competitor)",
                          "open with your own answer; link an independent source, or the business later where it helps")
@@ -1754,7 +1758,7 @@ class Linter:
         from .domains import kind as _kind
         strict, auth = set(), set()
         for f in self.sheet.get("facts", []):
-            if f.get("basis") == "client_page":
+            if f.get("basis") in ("client_page", "operator") or str(f.get("id", "")).startswith(("client:", "offer:")):
                 continue  # the client's own words are the client's to reuse
             sh = shingles(str(f.get("value", "")))
             (auth if _kind(f.get("source_url") or "") in ("government", "international") else strict).update(sh)
