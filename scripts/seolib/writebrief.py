@@ -77,6 +77,18 @@ def build(rd: Path) -> Path:
     from .pagejob import lines as page_job
     job = [x for x in page_job(sheet) if x.strip() and not x.startswith("## ")]
     W += ["", "## 1. Page job"] + [_cut(x, 380) for x in job[:12]]
+    gsc = C.load_json(rd / "research" / "gsc_insights.json") or {}
+    if gsc.get("rows"):
+        keep = [r["query"] for r in gsc["rows"][:6]]
+        W += ["", "### What Google already shows this page for (Search Console; never quote these numbers)",
+              "- Keep the wording that earns these: " + "; ".join(keep) + ".",
+              "- The title and H1 lead with the main query in its searcher's words."]
+        if gsc.get("low_ctr"):
+            W.append("- Title and meta description must answer: " + "; ".join(r["query"] for r in gsc["low_ctr"][:4])
+                     + " (they rank on page 1 but few people click).")
+        if gsc.get("striking") or gsc.get("questions"):
+            W.append("- Close to page 1 or asked as questions (the plan gives them headings): "
+                     + "; ".join(dict.fromkeys(r["query"] for r in (gsc.get("questions") or [])[:5] + (gsc.get("striking") or [])[:6])) + ".")
 
     W += ["", "## 2. The plan: write every heading below, in this order (a heading that is not natural English, often "
           "a search phrase, is rewritten as a person would ask it; keep its key words)",

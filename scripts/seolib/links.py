@@ -40,8 +40,12 @@ def build(rd: Path) -> list[dict]:
     rel = lm.get("client_related") or {}
     replaced = set() if b.get("task") == "rewrite" else {_norm(u) for u in rel.get("same_topic", [])}
     titles = {_norm(u): t for u, t in (lm.get("client_titles") or {}).items()}
+    gsc = C.load_json(rd / "research" / "gsc_insights.json") or {}
     pool = list(dict.fromkeys(rel.get("commercial", []) + rel.get("guides", []) + rel.get("same_topic", [])
+                              + [p["page"] for p in gsc.get("link_targets") or [] if p.get("page")]
                               + [c["url"] for c in lm.get("children", [])] + lm.get("internal", [])))
+    roles_gsc = {_norm(p["page"]): f"ranks in Search Console for {', '.join(p.get('queries', [])[:2])}"
+                 for p in gsc.get("link_targets") or [] if p.get("page")}
     home = _norm(f"https://{(b.get('domain') or '').removeprefix('www.')}/")
     linked = {_norm(u) for u in re.findall(r"\]\((https?://[^)\s]+)\)", md)}
     sections, sec = [], "intro"
@@ -51,7 +55,7 @@ def build(rd: Path) -> list[dict]:
         elif blk["type"] in ("p", "li"):
             sections.append((sec, blk.get("line"), blk["text"], tk(blk["text"])))
     page_tk = tk(" ".join(t for _, _, t, _ in sections))
-    roles = {**{_norm(u): "service or commercial page" for u in rel.get("commercial", [])},
+    roles = {**roles_gsc, **{_norm(u): "service or commercial page" for u in rel.get("commercial", [])},
              **{_norm(u): "related guide" for u in rel.get("guides", [])},
              **{_norm(u): "the client's other page on this topic" for u in rel.get("same_topic", [])}}
     def seq(s):  # content words in order, for phrase matching

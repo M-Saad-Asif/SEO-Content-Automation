@@ -460,6 +460,10 @@ def build(rd: Path) -> dict:
     # re-ranked by the entities the ranking pages use (washer, cartridge, valve; plunger, drain, unblocker)
     rel = lm.get("client_related") or {}
     cands = lm.get("client_candidates") or []
+    # client pages Search Console already shows for this topic are proven link targets: they join the candidates
+    gsc_t = [p["page"] for p in ((C.load_json(rd / "research" / "gsc_insights.json") or {}).get("link_targets") or [])
+             if p.get("page") and p["page"].rstrip("/") != (b.get("page_url") or "").rstrip("/")]
+    cands = list(dict.fromkeys(cands + gsc_t[:6]))
     if cands:
         from .clientpages import COMMERCIAL as SHOP_URL, slug_words, _shared
         from urllib.parse import urlparse

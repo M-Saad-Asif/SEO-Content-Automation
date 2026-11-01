@@ -1,6 +1,6 @@
 name: gsc_insights
 kind: script
-description: Google Search Console data for the page (last 90 days). Every query it shows for, with clicks, impressions, CTR and position. Striking-distance queries (positions 4–20), low-CTR queries (title/meta problem), query gaps (queries the page shows for but doesn't cover), and cannibalisation (other client pages competing for the same queries). Script route through a service account; MCP route through `seo.py ingest`.
+description: Google Search Console data for the page (last 90 days), the in-run face of the Search Console suite (plugins/mcp_hub/gsc). Every query it shows for, striking-distance, question and should-rank queries, CTR under the site's own curve, query gaps, cannibalisation, URL Inspection index state, decay, mobile gap, anonymised share, link targets and link sources, with data caveats. Reads the run's MCP rows, else the client's Search Console store, else the live API.
 needs: [current_page, foundation]
 modes: [deep, quick]
 connector: gsc

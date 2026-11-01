@@ -145,8 +145,24 @@ def research_pack(rd: Path) -> None:
             if gsc.get("cannibalisation"):
                 W.append("Cannibalisation (other client pages also show): " + "; ".join(
                     f"{q} → {', '.join(c['page'] for c in cs[:2])}" for q, cs in list(gsc["cannibalisation"].items())[:8]))
+            if gsc.get("questions"):
+                W.append("Questions the page already shows for (answer each under its own heading, in these words): "
+                         + "; ".join(f"{r['query']} (pos {r['position']})" for r in gsc["questions"][:10]))
+            if gsc.get("should_rank"):
+                W.append("Should-rank queries (positions 20–50; the page is close, cover them): "
+                         + "; ".join(f"{r['query']} (pos {r['position']})" for r in gsc["should_rank"][:10]))
+            if gsc.get("ctr_curve_source"):
+                W.append(f"CTR expectations come from the site's own curve ({gsc['ctr_curve_source']}).")
         for o in gsc.get("existing_topic_pages") or []:
             W.append(f"- Client page already showing for this topic: {o['page']} ({o['impressions']} impressions; e.g. {', '.join(o['queries'][:3])})")
+        ix = gsc.get("index") or {}
+        if ix:
+            W.append(f"- URL Inspection: {ix.get('coverageState')}; Google's canonical {ix.get('googleCanonical')}; "
+                     f"last crawl {ix.get('lastCrawlTime')}" + (f" → {ix['what_to_do']}" if ix.get("bucket") not in ("indexed", "ok") else ""))
+        for p in (gsc.get("link_targets") or [])[:5]:
+            W.append(f"- Link target (client page ranking for this topic): {p['page']} (pos {p['position']}; {', '.join(p['queries'][:2])})")
+        for c in gsc.get("caveats") or []:
+            W.append(f"- Data caveat: {c}")
         W.append("")
     if kr.get("keywords"):
         W += [f"## Keyword data (DataForSEO; source {kr.get('source')})",

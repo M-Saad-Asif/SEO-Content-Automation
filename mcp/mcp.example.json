@@ -1,9 +1,9 @@
 {
   "mcpServers": {
     "gsc": {
-      "command": "npx",
-      "args": ["-y", "mcp-server-gsc"],
-      "env": { "GOOGLE_APPLICATION_CREDENTIALS": "C:/path/to/service-account.json" }
+      "command": "uvx",
+      "args": ["open-gsc-mcp@1.4.0"],
+      "env": { "GSC_SERVICE_ACCOUNT_FILE": "C:/path/to/service-account.json", "GSC_ENABLE_WRITES": "0" }
     },
     "dataforseo": {
       "command": "npx",

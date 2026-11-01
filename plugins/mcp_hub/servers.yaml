@@ -1,0 +1,70 @@
+# The MCP hub's registry: every MCP server the pipeline uses, what it is for, how to install it, which tools are
+# allowed, which are never used, which skill governs it, and where its data enters the pipeline.
+# Checked November 2026. Pin versions: community servers change tool names between releases.
+
+servers:
+  gsc:
+    title: Google Search Console
+    skill: plugins/mcp_hub/gsc/SKILL.md
+    official: false   # Google has published no Search Console MCP server (google/mcp lists GA, BigQuery, Chrome DevTools)
+    recommended:
+      - name: open-gsc-mcp
+        repo: https://github.com/onlymoein/google-search-console-mcp
+        install: uvx open-gsc-mcp@1.4.0
+        auth: "OAuth read-only (`uvx open-gsc-mcp@1.4.0 auth login --read-only`) or GSC_SERVICE_ACCOUNT_FILE"
+        safety: "GSC_ENABLE_WRITES=0"
+        why: the most API-faithful server; hourly data, startRow paging (next_start_row), every search type, 50-URL batch inspection, RE2 validation before calls
+        caveat: one maintainer (9 stars); OAuth tokens of an unpublished OAuth app expire every 7 days
+      - name: mcp-search-console (AminForou/mcp-gsc)
+        repo: https://github.com/AminForou/mcp-gsc
+        install: uvx mcp-search-console
+        auth: "OAuth desktop client, or a service account with GSC_SKIP_OAUTH=true"
+        safety: "leave GSC_ALLOW_DESTRUCTIVE unset; set GSC_DATA_STATE=final for comparisons"
+        why: the largest user base (2,000+ stars), destructive tools off by default, 10-URL batch inspection
+        caveat: row_limit reported as up to 500; no hourly data; split pulls by date/device/country to see more rows
+    compatibility:
+      - name: mcp-server-gsc (ahonn)
+        install: npx -y mcp-server-gsc@0.3.0
+        auth: GOOGLE_APPLICATION_CREDENTIALS (service account)
+        caveat: no startRow (25k rows max) and no hourly data; submit_sitemap has no write gate; never run its remote HTTP mode without MCP_API_TOKEN (unauthenticated, CORS *)
+    optional:
+      - name: Google BigQuery MCP
+        why: SQL over the Search Console bulk export (long tail, anonymised share, history past 16 months); 3,000 rows per call
+        when: only after the site owner enables Bulk data export (no backfill)
+      - name: gsc-mcp-tools (FlorianBruniaux)
+        why: CrUX and PageSpeed for Core Web Vitals
+        safety: restrict with GSC_MCP_TOOL_FAMILIES; read-only scope
+    allowed_tools:   # capabilities, whatever each server names them (run tools/list first)
+      - list/get sites
+      - search analytics (any type, regex filters, final/all/hourly data state)
+      - URL inspection (single or batch)
+      - list/get sitemaps
+    never_without_user_approval:
+      - submit or delete a sitemap
+      - add or delete a site
+      - request indexing / Indexing API submits
+      - anything that changes the property
+    data_route:
+      site: "seo.py gsc plan <client>  → call the tools →  seo.py gsc ingest <client> <dataset> <file>"
+      page_run: "{run}/research/raw/gsc_insights.json (page_rows, site_rows), applied by `next`"
+      api_alternative: "GSC_SERVICE_ACCOUNT_JSON or GSC_OAUTH_JSON in .env, then seo.py gsc pull <client>"
+
+  dataforseo:
+    title: DataForSEO (official)
+    install: npx -y dataforseo-mcp-server
+    auth: DATAFORSEO_USERNAME / DATAFORSEO_PASSWORD (API login, not the dashboard)
+    skill: plugins/keyword_research/run.py (keyword volumes, intent, PAA click depth)
+    data_route: "seo.py ingest <run> keyword_research <file> (top-level key: keywords)"
+    cost: paid per task; the script route caches 7 days
+
+  clarity:
+    title: Microsoft Clarity (official)
+    install: "npx -y @microsoft/clarity-mcp-server --clarity_api_token=<token>"
+    skill: plugins/clarity_ux/SKILL.md
+    data_route: "seo.py ingest <run> clarity_ux <file> (top-level key: metrics)"
+    limits: 10 Data Export requests a day per project; last 1-3 days only
+
+  reddit:
+    title: Reddit (official Data API only)
+    skill: plugins/reddit_voice/SKILL.md
+    data_route: "seo.py ingest <run> reddit_voice <file> (top-level key: threads)"

@@ -129,6 +129,39 @@ An agent plugin ships a `SKILL.md`. To swap a stage, replace its folder. To add 
 | Outline gate | yes | no |
 | Typical total | 3–6 min | 2–4 min |
 
+## The MCP hub and the Search Console suite (November 2026)
+
+`plugins/mcp_hub/` hosts the MCP servers the pipeline uses and the skills that say when, why and how to use each tool:
+- `servers.yaml`, the registry: package, version, auth, allowed tools, the never-list, data route;
+- `SKILL.md`, the hub rules;
+- one skill folder per server.
+
+Google Search Console is the first server. `gsc/SKILL.md` maps every Search Console feature to a route (API, URL Inspection API, UI-only) and to a playbook in `gsc/playbooks/`: indexing, page optimiser, questions, crawl, render, performance, AI visibility, diagnostics, experience/links. It also has `ui_checklists.md` for the reports no API reaches, and `reference/` (caveats, regex, approvals, myths, experts). The evidence behind every rule is in `docs/gsc_research/`.
+
+The data layer is `scripts/seolib/gsc/`:
+
+| Module | Role |
+|---|---|
+| `api.py` | Read-only API: Search Analytics paged past 25k rows, URL Inspection, Sitemaps, Sites; service account or OAuth |
+| `store.py` | Per-site store `sites/<client>/gsc/<dataset>.json` (15 Performance datasets, inspections, sitemaps, 9 UI exports), plus the dated change log |
+| `mcp.py` | MCP route: the exact tool calls (`seo.py gsc plan`) and an ingest that accepts any server's rows, API JSON, UI CSV exports and pasted text |
+| `analyze.py`, `indexing.py`, `crawl.py`, `render.py` | Every playbook as pure functions: page optimiser, striking distance, the site's own CTR curve, questions, conversational, cannibalisation, decay, AI decoupling, device/country gaps, topical coverage, index replica and CCNI triage, crawl-waste classes, Google-style robots.txt testing, raw vs rendered HTML |
+| `caveats.py`, `regexlib.py` | Known data events and RE2-safe patterns, shared by every reader |
+| `bus.py` | The data bus. Every plugin and agent reads Search Console data through `Console` / `for_brief(brief)` or `seo.py gsc data <client> <view>` |
+| `audit.py`, `cli.py` | Site audit → `audit.md` + typed `actions.json`, and the rewrite queue (a `/page-seo` batch whose page instructions carry the Search Console reason and target queries). `/page-seo <website> \| gsc ...` is the operator route |
+
+How the data flows through a page run:
+
+| Stage | What it takes from Search Console |
+|---|---|
+| `gsc_insights` | Reads the run's MCP rows, else the store, else the live API. It adds questions, should-rank queries, the site CTR curve, index state (URL Inspection), decay, device gap, anonymised share, link targets, link sources and caveats |
+| `query_map` | Turns those queries into H2s or in-section answers |
+| The plan and the internal-link ranking | Add the client pages Search Console shows for the topic |
+| The write brief | Which wording to keep, and which queries the title and meta must answer |
+| Lint | Blocks dropped striking queries (Q04) and weak-CTR titles (Q05) |
+| When a page finishes | The driver logs it in `changelog.json` with its baseline, so `seo.py gsc data <client> impact` can measure the change later |
+| A rewrite with no Search Console route | The first task asks the operator to fetch the page's rows through an attached MCP server; `next` applies them |
+
 ## Website context and JSON writing handoff (October 2026)
 
 `seolib/sitecontext.py` resolves an explicit project binding before a single-profile fallback, matches hosts exactly, and builds a resumable same-site inventory from robots/sitemaps/internal links. Parsed documents share versioned fetch cache keys with foundation/intake. The inventory records H1/title/query/type, purpose excerpts, read states and gaps. Thin successful pages may use Spider; refused/error pages stay gaps. A page cap or an inaccessible page cannot become a claim that the whole website was read.

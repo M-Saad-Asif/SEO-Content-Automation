@@ -70,7 +70,10 @@ def run(ctx):
     impr = {r["query"].lower(): r for r in (gsc.get("rows") or [])}
     cannibal = gsc.get("cannibalisation") or {}
     # Priority order: queries the page already shows for, real PAA (Serper, then DataForSEO click-depth), then the rest.
-    cands = [(r["query"], "gsc") for r in (gsc.get("striking") or []) + (gsc.get("gaps") or [])]
+    cands = [(r["query"], "gsc") for r in (gsc.get("questions") or []) + (gsc.get("striking") or [])
+             + (gsc.get("should_rank") or [])[:8] + (gsc.get("gaps") or [])]
+    impr.update({r["query"].lower(): r for r in (gsc.get("questions") or []) + (gsc.get("should_rank") or [])
+                 if r["query"].lower() not in impr})
     # questions borrowed from another market's SERP (the results API has no PAA for this one) rank below this
     # market's own question searches: local demand first, borrowed phrasing second
     borrowed = serp.get("paa_locale") and serp.get("paa_locale") != serp.get("locale")

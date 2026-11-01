@@ -1,0 +1,6 @@
+name: mcp_hub
+kind: hub
+description: Hosts the MCP servers the pipeline uses and the skills that say when, why and how to use each tool. Each server has a registry entry (servers.yaml), a skill folder (gsc/ for Google Search Console) and a data route into the pipeline (`seo.py gsc ingest` / `seo.py ingest`). The research harness never runs it; agents read it, and every plugin reads the data it brings through seolib (the Search Console bus).
+needs: []
+modes: [manual]
+outputs: [sites/<client>/gsc/*.json, sites/<client>/gsc/audit.md, sites/<client>/gsc/actions.json]

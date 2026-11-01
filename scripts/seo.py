@@ -23,6 +23,8 @@ Lower-level commands (the driver calls these; agents only use them when a printe
   python scripts/seo.py mark     <run-dir|brief.yaml> <step> start|end
   python scripts/seo.py report   <run-dir|brief.yaml>
   python scripts/seo.py test     [fixture-name]          # regression fixtures
+  python scripts/seo.py gsc      <action> [client] ...   # Search Console suite: status, pull, plan, ingest, inspect,
+                                                         # audit, data, queue, crawl, robots, render, log
 
 See WORKFLOW.md. Scripts do everything deterministic; the agent only writes.
 """
@@ -126,7 +128,26 @@ def main(argv=None) -> int:
     sub.add_parser("doctor")
     p = sub.add_parser("read")
     p.add_argument("url")
+    p = sub.add_parser("gsc", help="Google Search Console suite (see seolib/gsc/cli.py)")
+    p.add_argument("action", choices=["status", "pull", "plan", "ingest", "inspect", "audit", "data", "queue", "crawl",
+                                      "robots", "render", "log"])
+    p.add_argument("args", nargs="*")
+    p.add_argument("--refresh", action="store_true")
+    p.add_argument("--only")
+    p.add_argument("--limit", type=int)
+    p.add_argument("--page")
+    p.add_argument("--query")
+    p.add_argument("--topic")
+    p.add_argument("--kinds")
+    p.add_argument("--run", action="store_true")
+    p.add_argument("--test", nargs="*")
+    p.add_argument("--rule", nargs="*")
+    p.add_argument("--json", action="store_true")
     a = ap.parse_args(argv)
+
+    if a.cmd == "gsc":
+        from seolib.gsc.cli import main as gsc_main
+        return gsc_main(a)
 
     if a.cmd == "read":
         from seolib.driver import read_page

@@ -29,7 +29,10 @@ def check_plugins() -> list[tuple[bool, str]]:
     out = []
     for n, m in ms.items():
         has_impl = (m["_dir"] / "run.py").exists() if m.get("kind") == "script" else \
-            (m["_dir"] / "SKILL.md").exists() if m.get("kind") == "agent" else bool(m.get("entry"))
+            (m["_dir"] / "SKILL.md").exists() if m.get("kind") == "agent" else \
+            (m["_dir"] / "servers.yaml").exists() and all(  # a hub: its registry, and every server's skill on disk
+                (C.ROOT / s["skill"].split(" ")[0]).exists() for s in (C.load_yaml(m["_dir"] / "servers.yaml").get("servers") or {}).values()
+                if s.get("skill")) if m.get("kind") == "hub" else bool(m.get("entry"))
         skill = m["_dir"] / "SKILL.md"
         has_skill = skill.exists() and skill.read_text(encoding="utf-8").startswith("---\nname: ") \
             and len(skill.read_text(encoding="utf-8").split()) >= 120
