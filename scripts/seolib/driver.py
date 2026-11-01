@@ -282,6 +282,14 @@ def next_step(brief_path: str, mode: str | None = None) -> None:
         st = _state(rd)
         st["mode"] = mode or brief.get("research_mode") or "deep"
         _save_state(rd, st)
+    raw_gsc = rd / "research" / "raw" / "gsc_insights.json"
+    if raw_gsc.exists() and not (rd / "draft.md").exists() and \
+            (C.load_json(rd / "research" / "gsc_insights.json") or {}).get("source") != "mcp":
+        from .harness import rerun_dependents  # Search Console rows the operator fetched through MCP during research
+        _quiet(rerun_dependents, rd, brief, "gsc_insights")
+        for f in ("write_brief.md", "plan.json"):
+            (rd / f).unlink(missing_ok=True)
+        print("Search Console rows from the MCP server applied.")
     st = _state(rd)
     _end_agent_stage(rd, st)
     deep = st.get("mode", "deep") == "deep"
@@ -509,6 +517,7 @@ def next_step(brief_path: str, mode: str | None = None) -> None:
     if not (rd / "eval.md").exists() or (rd / "eval.md").stat().st_mtime < final.stat().st_mtime:
         from .evaluate import evaluate
         _quiet(evaluate, rd)
+    _log_gsc(brief, rd)
     st["done"]["complete"] = C.now_iso()
     _save_state(rd, st)
     if brief.get("batch_plan"):
@@ -522,6 +531,23 @@ def next_step(brief_path: str, mode: str | None = None) -> None:
     print(f"Report: {R}/report.md")
     print(f"Scores sheet (for a reviewer): {R}/eval.md")
     print("Stop here. Reply with these three paths and nothing else.")
+
+
+def _log_gsc(brief: dict, rd: Path) -> None:
+    """The dated change log: Search Console impact measurement compares this baseline with later data."""
+    try:
+        from .gsc import store as GS
+        gslug = GS.slug_for(brief)
+        if not gslug:
+            return
+        g = C.load_json(rd / "research" / "gsc_insights.json") or {}
+        GS.log_change(gslug, {"url": brief.get("page_url") or "", "keyword": brief.get("target_query"),
+                              "kind": f"{brief.get('task') or 'new'} written", "run": rd.name,
+                              "target_queries": [r["query"] for r in (g.get("questions") or []) + (g.get("striking") or [])][:15],
+                              "baseline": g.get("totals"), "window": g.get("window"),
+                              "note": (brief.get("instructions") or "")[:300]})
+    except Exception as e:  # the page is done either way
+        print(f"note: Search Console change log not updated ({type(e).__name__}: {e})")
 
 
 def parse_request(text: str) -> dict:
@@ -598,6 +624,9 @@ def start(text: str, mode: str | None = None) -> None:
         return next_step(text.strip(), mode)
     except SystemExit:
         pass
+    from .gsc.cli import route as gsc_route
+    if gsc_route(text):  # "<website> | gsc ..." : the Search Console audit, queue, crawl and page views
+        return
     from .batch import route_request
     if route_request(text, mode):
         return
@@ -848,6 +877,13 @@ def doctor() -> bool:
          f"{(C.ROOT / '.env').as_posix()})")
     line(bool(spider.api_key()), "SPIDER_API_KEY present (rendered page content)",
          "add SPIDER_API_KEY=... to .env; without it pages are fetched directly", hard=False)
+    from .gsc import api as gsc_api
+    why = gsc_api.configured()
+    line(not why, "Google Search Console API route (read-only)" if not why else
+         "Search Console API route not set up; the MCP route (seo.py gsc plan) works without it",
+         f"{why}; see plugins/mcp_hub/gsc/SKILL.md", hard=False)
+    hub = C.ROOT / "plugins" / "mcp_hub" / "servers.yaml"
+    line(hub.exists(), "MCP hub registry (plugins/mcp_hub/servers.yaml)", "restore plugins/mcp_hub", hard=False)
     gi = C.ROOT / ".gitignore"
     line(gi.exists() and ".env" in gi.read_text(encoding="utf-8").split(), ".env is git-ignored", "add .env to .gitignore")
     from .harness import manifests

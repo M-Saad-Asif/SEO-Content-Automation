@@ -41,43 +41,15 @@ def _cached(key: str, ttl: float):
 # ---------------------------------------------------------------- Google Search Console
 
 def gsc_configured() -> str | None:
-    p = env("GSC_SERVICE_ACCOUNT_JSON")
-    if not p:
-        return "set GSC_SERVICE_ACCOUNT_JSON (path to a service-account key added as a user on the GSC property)"
-    if not os.path.exists(p):
-        return f"GSC_SERVICE_ACCOUNT_JSON points to a missing file: {p}"
-    return None
-
-
-def _gsc_token() -> str:
-    from google.oauth2 import service_account
-    from google.auth.transport.requests import Request
-    creds = service_account.Credentials.from_service_account_file(
-        env("GSC_SERVICE_ACCOUNT_JSON"), scopes=["https://www.googleapis.com/auth/webmasters.readonly"])
-    creds.refresh(Request())
-    return creds.token
+    """The Search Console suite's API route (service account or OAuth user file); see seolib/gsc/api.py."""
+    from .gsc import api
+    return api.configured()
 
 
 def gsc_query(site: str, body: dict, ttl: float = 86400) -> dict:
     """POST searchAnalytics/query. `site` is 'sc-domain:example.com' or 'https://example.com/'."""
-    why = gsc_configured()
-    if why:
-        return {"not_configured": why}
-    key = f"gsc|{site}|{sorted(body.items())}"
-    hit = _cached(key, ttl)
-    if hit:
-        return hit
-    import httpx
-    from urllib.parse import quote
-    try:
-        tok = _gsc_token()
-        r = httpx.post(f"https://searchconsole.googleapis.com/webmasters/v3/sites/{quote(site, safe='')}/searchAnalytics/query",
-                       headers={"Authorization": f"Bearer {tok}"}, json=body, timeout=30)
-        if r.status_code != 200:
-            return {"error": f"GSC {r.status_code}: {r.text[:300]}"}
-        return C.cache_put(key, r.json())
-    except Exception as e:
-        return {"error": f"GSC {type(e).__name__}: {e}"}
+    from .gsc import api
+    return api.query(site, body, ttl)
 
 
 def gsc_window(days: int = 90) -> tuple[str, str]:

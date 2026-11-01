@@ -1,5 +1,7 @@
 # MCP servers for the connector plugins
 
+**The MCP hub is `plugins/mcp_hub/`.** It holds the registry of servers (`servers.yaml`) and the skills that say when, why and how to use each tool. Google Search Console has its own skill, playbooks and data suite (`plugins/mcp_hub/gsc/SKILL.md`, `seo.py gsc ...`, `/page-seo <website> | gsc`). This file covers installing servers.
+
 The connector plugins have two routes:
 
 - **Script:** they call the APIs themselves with keys in `.env`.
@@ -16,12 +18,14 @@ Use whichever you have. Both feed the same analysis (see each plugin's `SKILL.md
 
 | Server | Package | Credentials | Tool used | Plugin |
 |---|---|---|---|---|
-| Google Search Console | `mcp-server-gsc` (community; check its README for the credential variable) | Service-account JSON added as a user on the property | `search_analytics` | `gsc_insights` |
+| Google Search Console | `open-gsc-mcp` pinned (`uvx open-gsc-mcp@1.4.0`, `GSC_ENABLE_WRITES=0`), or `mcp-search-console` (AminForou). `mcp-server-gsc` (ahonn) works, but it has no paging past 25k rows and no hourly data | OAuth read-only login, or a service account added as a user on the property | Search analytics, URL inspection, sitemaps (read-only): `seo.py gsc plan <client>` prints every call | The Search Console suite (`sites/<client>/gsc/`), `gsc_insights` and everything downstream |
 | DataForSEO (official) | `dataforseo-mcp-server` | API login and password (not the dashboard login) | Related keywords, keyword overview, SERP organic with PAA click depth | `keyword_research` |
 | Microsoft Clarity (official) | `@microsoft/clarity-mcp-server` | Project API token (Settings → Data Export) | `get-clarity-data` (numOfDays 1–3, dimension URL) | `clarity_ux` |
 | Reddit | Any Reddit MCP that uses Reddit's official API | Reddit app credentials | Search and comments | `reddit_voice` |
 
-Use read-only tools only. For example, never call `submit_sitemap` or anything that changes a property.
+Use read-only tools only. For example, never call `submit_sitemap` or anything that changes a property. The full never-list and the approval rules are in `plugins/mcp_hub/gsc/reference/approvals.md`.
+
+Search Console without an MCP server: put `GSC_SERVICE_ACCOUNT_JSON` (or `GSC_OAUTH_JSON`) in `.env` and `pip install google-auth`. Then `seo.py gsc pull <client>` fills the same store directly from the API.
 
 ## From MCP output to the pipeline
 

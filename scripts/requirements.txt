@@ -4,3 +4,5 @@ spacy>=3.7,<4
 # then: python -m spacy download en_core_web_sm
 pycountry>=24
 pypdf>=4
+# Search Console API route (optional; the MCP route works without it)
+google-auth>=2.20

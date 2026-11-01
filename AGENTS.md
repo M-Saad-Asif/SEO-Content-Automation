@@ -34,6 +34,7 @@ E-E-A-T inputs only a person can give go in the client profile: `author:` (a rea
 - `python scripts/seo.py site <website>` reads/discovers the website and saves reusable `seo-context.yaml` plus its inventory; no article run. Repeat to resume a capped discovery.
 - Add `--keywords <file>`, `--pages <file>` or `--all-pages` to prepare a resumable queue; `python scripts/seo.py batch <plan>` starts/resumes writing. Through adapters use `<website> | keywords: <file or semicolon list>` or `<website> | pages: <file or URL list>`.
 - `python scripts/seo.py client <slug> <domain>` builds `clients/<slug>.yaml` from the live site.
+- Search Console (the MCP hub's first server, `plugins/mcp_hub/gsc/SKILL.md`): `/page-seo <website> | gsc` audits the site and writes `sites/<client>/gsc/audit.md` and `actions.json`. When no API key is set, it prints one MCP fetch task instead. `<website> | gsc queue optimizer 10` (kinds: optimizer, questions, new, decay, ctr, ccni) sends the findings to the page pipeline as a batch. `<website> | gsc crawl <export>` analyses Crawl Stats. Any agent can read the data with `seo.py gsc data <client> <view>`. robots.txt, removals, sitemap writes and Request indexing are proposals only and always need the user's approval.
 - `python scripts/seo.py brief <client> "<query>"` writes `briefs/<slug>.yaml` (`start` does this for you).
 
 ## Repo notes for code changes (not for writing runs)

@@ -5,6 +5,20 @@ description: Use Google Search Console data to steer a page rewrite or a new pag
 
 # Search Console insights
 
+This is the in-run face of the Search Console suite (`plugins/mcp_hub/gsc/SKILL.md`). Its data, in order:
+1. rows ingested for this run;
+2. the client's store (`sites/<client>/gsc`, filled by `seo.py gsc pull` or the MCP fetch plan);
+3. a live API call for this page.
+
+Beyond the buckets below, it passes on:
+- questions and should-rank queries (to `query_map`);
+- link targets (to internal links);
+- link sources (pages that should link into this one);
+- URL Inspection index state;
+- decay, device gap and anonymised share;
+- data caveats;
+- a CTR curve built from the site's own data instead of a fixed table.
+
 **Routes**, both producing the same analysis:
 - **Script (default):** set `GSC_SERVICE_ACCOUNT_JSON` to a service-account key file, and add that account's email as a user on the Search Console property. The property comes from `brief.gsc_property`, defaulting to `sc-domain:<domain>`.
 - **MCP:** with a GSC MCP server attached to your agent (several community servers exist), fetch the rows and save them as raw JSON, then run `seo.py ingest <run> gsc_insights <file>`.

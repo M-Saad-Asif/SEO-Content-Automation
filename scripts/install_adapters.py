@@ -36,7 +36,7 @@ def body(args: str) -> str:
 
 The pipeline lives in `{ROOT.as_posix()}`. The commands below work from any folder.
 
-The request is {args}: a keyword with optional client/instructions, a domain or a page URL. Page URLs are read for type and main query. A configured website context (seo-context.yaml) or a single saved client is reused; ask for the website only when none is unambiguous. A website list works as `example.com | keywords: keywords.csv` or `example.com | pages: pages.txt` (semicolon-separated values also work). The program discovers the website, prepares a resumable queue and prints one page task at a time.
+The request is {args}: a keyword with optional client/instructions, a domain or a page URL. Page URLs are read for type and main query. A configured website context (seo-context.yaml) or a single saved client is reused; ask for the website only when none is unambiguous. A website list works as `example.com | keywords: keywords.csv` or `example.com | pages: pages.txt` (semicolon-separated values also work). The program discovers the website, prepares a resumable queue and prints one page task at a time. Google Search Console works through the same command: `example.com | gsc` audits the site from Search Console (when it prints an MCP fetch task, use the Search Console MCP server attached to you), and `example.com | gsc queue optimizer 10` (or questions, new, decay, ctr, ccni) rewrites the pages it found.
 
 1. Run `{SEO} start "<the request, exactly as typed>"`.
    - If it prints `NEED A CLIENT`, `NEED A KEYWORD` or `NEED A PAGE`, ask the missing-context question and run `start` again with their answer added.
